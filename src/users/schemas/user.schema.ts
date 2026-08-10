@@ -19,19 +19,19 @@ export class User {
   required: true,
   trim: true,
 })
-name: string;
+name: string | undefined;
 
 @Prop({
   required: true,
   trim: true,
 })
-firstName: string;
+firstName: string | undefined;
 
 @Prop({
   required: true,
   trim: true,
 })
-lastName: string;
+lastName: string | undefined;
 
 @Prop({
   required: true,
@@ -39,55 +39,55 @@ lastName: string;
   lowercase: true,
   trim: true,
 })
-email: string;
+email: string | undefined;
 
 @Prop({
   required: true,
   select: false,
 })
-passwordHash: string;
+passwordHash: string | undefined;
 
 @Prop({
   required: true,
   trim: true,
 })
-companyName: string;
+companyName: string | undefined;
 
 @Prop({
   required: true,
   trim: true,
 })
-salesPerson: string;
+salesPerson: string | undefined;
 
 @Prop({
   required: true,
   trim: true,
 })
-mobileNumber: string;
+mobileNumber: string | undefined;
 
 @Prop({
   default: '',
   trim: true,
 })
-address: string;
+address: string | undefined;
 
 @Prop({
   default: '',
   trim: true,
 })
-state: string;
+state: string | undefined;
 
 @Prop({
   default: '',
   trim: true,
 })
-city: string;
+city: string | undefined;
 
 @Prop({
   default: '',
   trim: true,
 })
-zipCode: string;
+zipCode: string | undefined;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
