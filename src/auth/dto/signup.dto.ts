@@ -12,21 +12,21 @@ export class SignupDto {
   @IsString()
   @IsNotEmpty()
   @Length(2, 50)
-  firstName: string;
+  firstName!: string;
 
   @IsString()
   @IsNotEmpty()
   @Length(2, 50)
-  lastName: string;
+  lastName!: string;
 
  @IsString()
   @IsNotEmpty()
   @Length(2, 50)
-  name: string;
+  name!: string;
 
   @IsEmail()
   @MaxLength(254)
-  email: string;
+  email!: string;
 
   @IsString()
   @Length(8, 128)
@@ -34,24 +34,24 @@ export class SignupDto {
     message:
       'Password must contain at least one letter and one number.',
   })
-  password: string;
+  password!: string;
 
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  companyName: string;
+  companyName!: string;
 
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  salesPerson: string;
+  salesPerson!: string;
 
   @IsString()
   @IsNotEmpty()
   @Matches(/^[0-9+\-()\s]{7,20}$/, {
     message: 'Mobile number is invalid.',
   })
-  mobileNumber: string;
+  mobileNumber!: string;
 
   @IsOptional()
   @IsString()

@@ -23,7 +23,7 @@ export class Diamond {
     index: true,
     trim: true,
   })
-  stoneNo: string;
+  stoneNo!: string;
 
   @Prop({
     index: true,
@@ -35,14 +35,14 @@ export class Diamond {
   default: false,
   index: true,
 })
-hasFullDetails: boolean;
+hasFullDetails!: boolean;
 
 @Prop({
   enum: ["FULL", "LIMITED"],
   default: "LIMITED",
   index: true,
 })
-detailSource: string;
+detailSource!: string;
 
   @Prop({
     type: Number,
@@ -58,7 +58,7 @@ detailSource: string;
     default: false,
     index: true,
   })
-  isAvailable: boolean;
+  isAvailable!: boolean;
 
   @Prop()
   shapeCode?: string;
