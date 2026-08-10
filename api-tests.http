@@ -1,0 +1,28 @@
+@baseUrl = http://localhost:4000/api
+@token = paste_access_token_here
+
+### Health
+GET {{baseUrl}}/health
+
+### Signup
+POST {{baseUrl}}/auth/signup
+Content-Type: application/json
+
+{
+  "name": "Theo User",
+  "email": "theo@example.com",
+  "password": "Secure123"
+}
+
+### Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "theo@example.com",
+  "password": "Secure123"
+}
+
+### Current user
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
