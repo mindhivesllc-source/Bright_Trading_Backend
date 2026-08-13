@@ -72,8 +72,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  // Use a local address for local development.
-  await app.listen(env.port, '127.0.0.1');
+  await app.listen(env.port, '0.0.0.0');
 
   console.log(`Auth API running at http://localhost:${env.port}/api`);
 }
