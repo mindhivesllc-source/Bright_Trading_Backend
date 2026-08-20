@@ -42,42 +42,95 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+
 import { setServers } from 'node:dns';
+
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { env } from './config/env.config';
 
-// Forces Node's SRV and TXT queries through public DNS.
-// Confirm this is permitted by your office IT policy.
-setServers(['8.8.8.8', '1.1.1.1']);
+/*
+ * Forces Node DNS queries through public DNS.
+ * Keep this if it is required for your MongoDB Atlas
+ * SRV connection in your current environment.
+ */
+setServers([
+  '8.8.8.8',
+  '1.1.1.1',
+]);
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app =
+    await NestFactory.create<NestExpressApplication>(
+      AppModule,
+    );
 
+  /*
+   * Security headers
+   */
   app.use(helmet());
+
+  /*
+   * All API routes start with /api
+   */
   app.setGlobalPrefix('api');
 
+  /*
+   * Frontend access
+   */
   app.enableCors({
     origin: env.corsOrigins,
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+
+    methods: [
+      'GET',
+      'POST',
+    ],
+
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+    ],
   });
 
+  /*
+   * DTO validation
+   */
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
+
       forbidNonWhitelisted: true,
+
       transform: true,
     }),
   );
 
-  await app.listen(env.port, '0.0.0.0');
+  /*
+   * IMPORTANT:
+   *
+   * 0.0.0.0 works locally AND
+   * allows Render / Railway / Hostinger
+   * or another hosting provider to reach
+   * the NestJS application.
+   */
+  await app.listen(
+    env.port,
+    '0.0.0.0',
+  );
 
-  console.log(`Auth API running at http://localhost:${env.port}/api`);
+  console.log(
+    `Auth API running on port ${env.port}`,
+  );
 }
 
-bootstrap().catch((error: unknown) => {
-  console.error('Failed to start the server:', error);
-  process.exit(1);
-});
+bootstrap().catch(
+  (error: unknown) => {
+    console.error(
+      'Failed to start the server:',
+      error,
+    );
+
+    process.exit(1);
+  },
+);
