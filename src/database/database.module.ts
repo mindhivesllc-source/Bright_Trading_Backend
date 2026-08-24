@@ -38,44 +38,180 @@
 // })
 // export class DatabaseModule {}
 
-import { Module } from "@nestjs/common";
+// import { Module } from "@nestjs/common";
+// import {
+//   ConfigModule,
+//   ConfigService,
+// } from "@nestjs/config";
+// import {
+//   InjectConnection,
+//   MongooseModule,
+// } from "@nestjs/mongoose";
+// import { Connection } from "mongoose";
+
+// @Module({
+//   imports: [
+//     MongooseModule.forRootAsync({
+//       imports: [ConfigModule],
+
+//       inject: [ConfigService],
+
+//       useFactory: (
+//         configService: ConfigService,
+//       ) => {
+//         const uri =
+//           configService.getOrThrow<string>(
+//             "MONGODB_URI",
+//           );
+
+//         console.log(
+//           "MONGODB_URI:",
+//           uri.replace(
+//             /\/\/([^:]+):([^@]+)@/,
+//             "//$1:***@",
+//           ),
+//         );
+
+//         return {
+//           uri,
+//         };
+//       },
+//     }),
+//   ],
+// })
+// export class DatabaseModule {}
+
+
+
+import { Module } from '@nestjs/common';
+
 import {
   ConfigModule,
   ConfigService,
-} from "@nestjs/config";
+} from '@nestjs/config';
+
 import {
-  InjectConnection,
   MongooseModule,
-} from "@nestjs/mongoose";
-import { Connection } from "mongoose";
+  MongooseModuleOptions,
+} from '@nestjs/mongoose';
+
+import {
+  EASYSOFT_DB_CONNECTION,
+  KIRA_DB_CONNECTION,
+} from './database.constants';
+
+function createMongoOptions(
+  configService: ConfigService,
+  databaseNameVariable: string,
+): MongooseModuleOptions {
+  const uri =
+    configService.getOrThrow<string>(
+      'MONGODB_URI',
+    );
+
+  const dbName =
+    configService.getOrThrow<string>(
+      databaseNameVariable,
+    );
+
+  return {
+    uri,
+    dbName,
+
+    serverSelectionTimeoutMS: 15_000,
+    connectTimeoutMS: 15_000,
+  };
+}
 
 @Module({
   imports: [
+    /*
+     * ----------------------------------------------------
+     * DEFAULT CONNECTION
+     *
+     * Used for:
+     * - users
+     * - authentication
+     * - application data
+     *
+     * Database:
+     * bright_core
+     * ----------------------------------------------------
+     */
     MongooseModule.forRootAsync({
-      imports: [ConfigModule],
+      imports: [
+        ConfigModule,
+      ],
 
-      inject: [ConfigService],
+      inject: [
+        ConfigService,
+      ],
 
       useFactory: (
         configService: ConfigService,
-      ) => {
-        const uri =
-          configService.getOrThrow<string>(
-            "MONGODB_URI",
-          );
+      ) =>
+        createMongoOptions(
+          configService,
+          'MONGODB_CORE_DB',
+        ),
+    }),
 
-        console.log(
-          "MONGODB_URI:",
-          uri.replace(
-            /\/\/([^:]+):([^@]+)@/,
-            "//$1:***@",
-          ),
-        );
+    /*
+     * ----------------------------------------------------
+     * KIRA CONNECTION
+     *
+     * Database:
+     * bright_kira
+     * ----------------------------------------------------
+     */
+    MongooseModule.forRootAsync({
+      connectionName:
+        KIRA_DB_CONNECTION,
 
-        return {
-          uri,
-        };
-      },
+      imports: [
+        ConfigModule,
+      ],
+
+      inject: [
+        ConfigService,
+      ],
+
+      useFactory: (
+        configService: ConfigService,
+      ) =>
+        createMongoOptions(
+          configService,
+          'MONGODB_KIRA_DB',
+        ),
+    }),
+
+    /*
+     * ----------------------------------------------------
+     * EASYSOFT CONNECTION
+     *
+     * Database:
+     * bright_easysoft
+     * ----------------------------------------------------
+     */
+    MongooseModule.forRootAsync({
+      connectionName:
+        EASYSOFT_DB_CONNECTION,
+
+      imports: [
+        ConfigModule,
+      ],
+
+      inject: [
+        ConfigService,
+      ],
+
+      useFactory: (
+        configService: ConfigService,
+      ) =>
+        createMongoOptions(
+          configService,
+          'MONGODB_EASYSOFT_DB',
+        ),
     }),
   ],
 })

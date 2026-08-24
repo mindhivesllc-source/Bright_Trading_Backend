@@ -71,16 +71,72 @@
 // })
 // export class AuthModule {}
 
-import { Module } from "@nestjs/common";
-import { ConfigModule } from "@nestjs/config";
-import { APP_GUARD } from "@nestjs/core";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
-// import { ScheduleModule } from "@nestjs/schedule";
+// import { Module } from "@nestjs/common";
+// import { ConfigModule } from "@nestjs/config";
+// import { APP_GUARD } from "@nestjs/core";
+// import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+// // import { ScheduleModule } from "@nestjs/schedule";
 
-import { AppController } from "./app.controller";
-import { AuthModule } from "./auth/auth.module";
-import { DatabaseModule } from "./database/database.module";
-import { InventoryModule } from "./inventory/inventory.module";
+// import { AppController } from "./app.controller";
+// import { AuthModule } from "./auth/auth.module";
+// import { DatabaseModule } from "./database/database.module";
+// import { InventoryModule } from "./inventory/inventory.module";
+
+// @Module({
+//   imports: [
+//     ConfigModule.forRoot({
+//       isGlobal: true,
+//       cache: true,
+//     }),
+
+//     DatabaseModule,
+//     AuthModule,
+
+//     // ScheduleModule.forRoot(),
+
+//     ThrottlerModule.forRoot({
+//       throttlers: [
+//         {
+//           ttl: 60_000,
+//           limit: 200,
+//         },
+//       ],
+//     }),
+
+//     InventoryModule,
+//   ],
+// })
+// export class AppModule {}
+
+
+
+import {
+  Module,
+} from '@nestjs/common';
+
+import {
+  ConfigModule,
+} from '@nestjs/config';
+
+import {
+  ThrottlerModule,
+} from '@nestjs/throttler';
+
+import {
+  AppController,
+} from './app.controller';
+
+import {
+  AuthModule,
+} from './auth/auth.module';
+
+import {
+  DatabaseModule,
+} from './database/database.module';
+
+import {
+  InventoryModule,
+} from './inventory/inventory.module';
 
 @Module({
   imports: [
@@ -90,9 +146,8 @@ import { InventoryModule } from "./inventory/inventory.module";
     }),
 
     DatabaseModule,
-    AuthModule,
 
-    // ScheduleModule.forRoot(),
+    AuthModule,
 
     ThrottlerModule.forRoot({
       throttlers: [
@@ -104,6 +159,10 @@ import { InventoryModule } from "./inventory/inventory.module";
     }),
 
     InventoryModule,
+  ],
+
+  controllers: [
+    AppController,
   ],
 })
 export class AppModule {}

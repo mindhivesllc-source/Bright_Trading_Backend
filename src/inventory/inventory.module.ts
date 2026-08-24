@@ -161,91 +161,256 @@
 // export class InventoryModule {}
 
 
-import {
-  HttpModule,
-} from '@nestjs/axios';
+// import {
+//   HttpModule,
+// } from '@nestjs/axios';
 
-import {
-  Module,
-} from '@nestjs/common';
+// import {
+//   Module,
+// } from '@nestjs/common';
 
-import {
-  JwtModule,
-} from '@nestjs/jwt';
+// import {
+//   JwtModule,
+// } from '@nestjs/jwt';
 
-import {
-  MongooseModule,
-} from '@nestjs/mongoose';
+// import {
+//   MongooseModule,
+// } from '@nestjs/mongoose';
 
-import {
-  JwtAuthGuard,
-} from '../auth/guards/jwt-auth.guard';
+// import {
+//   JwtAuthGuard,
+// } from '../auth/guards/jwt-auth.guard';
+
+// import {
+//   Diamond,
+//   DiamondSchema,
+// } from './schemas/diamond.schema';
+
+// import {
+//   InventoryController,
+// } from './inventory.controller';
+
+// import {
+//   InventorySearchService,
+// } from './inventory-search.service';
+
+// import {
+//   InventorySyncService,
+// } from './inventory-sync.service';
+
+// import {
+//   KiraService,
+// } from './kira.service';
+
+// import {
+//   EasysoftService,
+// } from './easysoft.service';
+
+// @Module({
+//   imports: [
+//     HttpModule.register({
+//       timeout: 60_000,
+//       maxRedirects: 3,
+//     }),
+
+//     JwtModule.register({}),
+
+//     MongooseModule.forFeature([
+//       {
+//         name:
+//           Diamond.name,
+
+//         schema:
+//           DiamondSchema,
+//       },
+//     ]),
+//   ],
+
+//   controllers: [
+//     InventoryController,
+//   ],
+
+//   providers: [
+//     KiraService,
+
+//     EasysoftService,
+
+//     InventorySearchService,
+
+//     InventorySyncService,
+
+//     JwtAuthGuard,
+//   ],
+
+//   exports: [
+//     InventorySearchService,
+
+//     InventorySyncService,
+//   ],
+// })
+// export class InventoryModule {}
+
+
+// import {
+//   HttpModule,
+// } from '@nestjs/axios';
+
+// import {
+//   Module,
+// } from '@nestjs/common';
+
+// import {
+//   JwtModule,
+// } from '@nestjs/jwt';
+
+// import {
+//   MongooseModule,
+// } from '@nestjs/mongoose';
+
+// import {
+//   JwtAuthGuard,
+// } from '../auth/guards/jwt-auth.guard';
+
+// import {
+//   EASYSOFT_DB_CONNECTION,
+//   KIRA_DB_CONNECTION,
+// } from '../database/database.constants';
+
+// import {
+//   Diamond,
+//   DiamondSchema,
+// } from './schemas/diamond.schema';
+
+// import {
+//   InventoryController,
+// } from './inventory.controller';
+
+// import {
+//   InventorySearchService,
+// } from './inventory-search.service';
+
+// import {
+//   InventorySyncService,
+// } from './inventory-sync.service';
+
+// import {
+//   KiraService,
+// } from './kira.service';
+
+// import {
+//   EasysoftService,
+// } from './easysoft.service';
+
+// @Module({
+//   imports: [
+//     HttpModule.register({
+//       timeout: 60_000,
+//       maxRedirects: 3,
+//     }),
+
+//     JwtModule.register({}),
+
+//     /*
+//      * Kira diamonds
+//      *
+//      * Railway MongoDB
+//      * database: bright_kira
+//      * collection: diamonds
+//      */
+//     MongooseModule.forFeature(
+//       [
+//         {
+//           name:
+//             Diamond.name,
+
+//           schema:
+//             DiamondSchema,
+//         },
+//       ],
+
+//       KIRA_DB_CONNECTION,
+//     ),
+
+//     /*
+//      * Easysoft diamonds
+//      *
+//      * Railway MongoDB
+//      * database: bright_easysoft
+//      * collection: diamonds
+//      */
+//     MongooseModule.forFeature(
+//       [
+//         {
+//           name:
+//             Diamond.name,
+
+//           schema:
+//             DiamondSchema,
+//         },
+//       ],
+
+//       EASYSOFT_DB_CONNECTION,
+//     ),
+//   ],
+
+//   controllers: [
+//     InventoryController,
+//   ],
+
+//   providers: [
+//     KiraService,
+
+//     EasysoftService,
+
+//     InventorySearchService,
+
+//     InventorySyncService,
+
+//     JwtAuthGuard,
+//   ],
+
+//   exports: [
+//     InventorySearchService,
+
+//     InventorySyncService,
+//   ],
+// })
+// export class InventoryModule {}
+
+
+
+import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+
+import { InventoryController } from './inventory.controller';
+import { InventoryService } from './inventory.service';
+import { InventorySearchService } from './inventory-search.service';
 
 import {
   Diamond,
   DiamondSchema,
 } from './schemas/diamond.schema';
 
-import {
-  InventoryController,
-} from './inventory.controller';
-
-import {
-  InventorySearchService,
-} from './inventory-search.service';
-
-import {
-  InventorySyncService,
-} from './inventory-sync.service';
-
-import {
-  KiraService,
-} from './kira.service';
-
-import {
-  EasysoftService,
-} from './easysoft.service';
-
 @Module({
   imports: [
-    HttpModule.register({
-      timeout: 60_000,
-      maxRedirects: 3,
-    }),
-
-    JwtModule.register({}),
-
     MongooseModule.forFeature([
       {
-        name:
-          Diamond.name,
-
-        schema:
-          DiamondSchema,
+        name: Diamond.name,
+        schema: DiamondSchema,
       },
     ]),
   ],
 
-  controllers: [
-    InventoryController,
-  ],
+  controllers: [InventoryController],
 
   providers: [
-    KiraService,
-
-    EasysoftService,
-
+    InventoryService,
     InventorySearchService,
-
-    InventorySyncService,
-
-    JwtAuthGuard,
   ],
 
   exports: [
+    InventoryService,
     InventorySearchService,
-
-    InventorySyncService,
   ],
 })
 export class InventoryModule {}
