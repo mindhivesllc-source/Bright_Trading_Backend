@@ -700,8 +700,45 @@ import {
 } from './schemas/diamond.schema';
 
 import {
+  EASYSOFT_DB_CONNECTION,
+  KIRA_DB_CONNECTION,
+} from '../database/database.constants';
+
+import {
   SearchInventoryDto,
 } from './dto/search-inventory.dto';
+
+function compareBySort(
+  sort: Record<string, 1 | -1>,
+) {
+  return (
+    a: Record<string, any>,
+    b: Record<string, any>,
+  ): number => {
+    for (const [field, direction] of Object.entries(sort)) {
+      const aValue = a[field];
+      const bValue = b[field];
+
+      if (aValue === bValue) {
+        continue;
+      }
+
+      if (aValue === undefined) {
+        return 1;
+      }
+
+      if (bValue === undefined) {
+        return -1;
+      }
+
+      return aValue > bValue
+        ? direction
+        : -direction;
+    }
+
+    return 0;
+  };
+}
 
 function escapeRegex(
   value: string,
@@ -1079,10 +1116,12 @@ export class InventorySearchService {
     string;
 
   constructor(
-    @InjectModel(
-      Diamond.name,
-    )
-    private readonly diamondModel:
+    @InjectModel(Diamond.name, KIRA_DB_CONNECTION)
+    private readonly kiraDiamondModel:
+      Model<DiamondDocument>,
+
+    @InjectModel(Diamond.name, EASYSOFT_DB_CONNECTION)
+    private readonly easysoftDiamondModel:
       Model<DiamondDocument>,
 
     private readonly configService:
@@ -1516,45 +1555,72 @@ export class InventorySearchService {
           'featured'
       ];
 
+    /*
+     * Kira and Easysoft diamonds live in separate MongoDB
+     * connections/collections, so a single DB-level sort+skip+limit
+     * query cannot span both. Each source is asked for enough
+     * documents to cover the requested page, the two result sets
+     * are merged and re-sorted in memory, then sliced to the page.
+     */
+    const mergeLimit =
+      page * pageSize;
+
+    const projection = {
+      __v: 0,
+      raw: 0,
+
+      fullSyncRunId: 0,
+
+      availabilitySyncRunId: 0,
+    };
+
     const [
-      databaseDiamonds,
-      totalRecords,
+      kiraDiamonds,
+      kiraTotal,
+      easysoftDiamonds,
+      easysoftTotal,
     ] =
       await Promise.all(
         [
-          this.diamondModel
-            .find(
-              query,
-            )
+          this.kiraDiamondModel
+            .find(query)
             .sort(sort)
-            .skip(
-              (page -
-                1) *
-                pageSize,
-            )
-            .limit(
-              pageSize,
-            )
-            .select({
-              __v: 0,
-              raw: 0,
-
-              fullSyncRunId:
-                0,
-
-              availabilitySyncRunId:
-                0,
-            })
+            .limit(mergeLimit)
+            .select(projection)
             .lean()
             .exec(),
 
-          this.diamondModel
-            .countDocuments(
-              query,
-            )
+          this.kiraDiamondModel
+            .countDocuments(query)
+            .exec(),
+
+          this.easysoftDiamondModel
+            .find(query)
+            .sort(sort)
+            .limit(mergeLimit)
+            .select(projection)
+            .lean()
+            .exec(),
+
+          this.easysoftDiamondModel
+            .countDocuments(query)
             .exec(),
         ],
       );
+
+    const totalRecords =
+      kiraTotal + easysoftTotal;
+
+    const databaseDiamonds =
+      [
+        ...kiraDiamonds,
+        ...easysoftDiamonds,
+      ]
+        .sort(compareBySort(sort))
+        .slice(
+          (page - 1) * pageSize,
+          (page - 1) * pageSize + pageSize,
+        );
 
     const diamonds =
       databaseDiamonds.map(

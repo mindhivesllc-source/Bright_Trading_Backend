@@ -103,24 +103,22 @@ import {
 function createMongoOptions(
   configService: ConfigService,
   databaseNameVariable: string,
+  uriVariable: string = 'MONGODB_URI',
 ): MongooseModuleOptions {
-  /*
-   * Accept MONGODB_URI first, then
-   * Railway's auto-provided MONGO_URL.
-   */
   const uri =
-    configService.get<string>('MONGODB_URI') ||
-    configService.get<string>('MONGO_URL') ||
-    '';
+    configService.getOrThrow<string>(
+      uriVariable,
+    );
 
   const dbName =
-    configService.get<string>(
+    configService.getOrThrow<string>(
       databaseNameVariable,
-    ) || databaseNameVariable.replace('MONGODB_', '').replace('_DB', '').toLowerCase();
+    );
 
   return {
     uri,
     dbName,
+
     serverSelectionTimeoutMS: 15_000,
     connectTimeoutMS: 15_000,
   };

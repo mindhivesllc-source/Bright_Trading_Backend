@@ -77,14 +77,11 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('api');
 
   /*
-   * Frontend access.
-   * If CORS_ORIGINS is not set, allow all origins
-   * so the app works while you configure Railway.
+   * Frontend access. Falls back to localhost:5173
+   * (see env.config.ts) if CORS_ORIGINS is unset.
    */
   app.enableCors({
-    origin: env.corsOrigins.length
-      ? env.corsOrigins
-      : true,
+    origin: env.corsOrigins,
 
     methods: [
       'GET',

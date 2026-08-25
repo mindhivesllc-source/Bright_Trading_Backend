@@ -8,24 +8,22 @@ const port =
   Number(process.env.PORT ?? 8080);
 
 const mongoUri =
-  process.env.MONGODB_URI ||
-  process.env.MONGO_URL ||
-  '';
+  process.env.MONGODB_URI;
 
 const mongoCoreDb =
-  process.env.MONGODB_CORE_DB ||
+  process.env.MONGODB_CORE_DB ??
   'bright_core';
 
 const mongoKiraDb =
-  process.env.MONGODB_KIRA_DB ||
+  process.env.MONGODB_KIRA_DB ??
   'bright_kira';
 
 const mongoEasysoftDb =
-  process.env.MONGODB_EASYSOFT_DB ||
+  process.env.MONGODB_EASYSOFT_DB ??
   'bright_easysoft';
 
 const jwtSecret =
-  process.env.JWT_SECRET || '';
+  process.env.JWT_SECRET;
 
 const jwtExpiresIn =
   (
@@ -33,18 +31,46 @@ const jwtExpiresIn =
   ) as JwtSignOptions['expiresIn'];
 
 const jwtIssuer =
-  process.env.JWT_ISSUER ||
+  process.env.JWT_ISSUER ??
   'simple-auth-api';
 
 const jwtAudience =
-  process.env.JWT_AUDIENCE ||
+  process.env.JWT_AUDIENCE ??
   'simple-auth-client';
 
 const corsOrigins =
-  (process.env.CORS_ORIGINS || '')
+  (
+    process.env.CORS_ORIGINS ??
+    'http://localhost:5173'
+  )
     .split(',')
-    .map((o: string) => o.trim())
+    .map((origin: string) => origin.trim())
     .filter(Boolean);
+
+if (!mongoUri) {
+  throw new Error(
+    'MONGODB_URI is missing from environment variables',
+  );
+}
+
+if (
+  !jwtSecret ||
+  jwtSecret.length < 32
+) {
+  throw new Error(
+    'JWT_SECRET must contain at least 32 characters',
+  );
+}
+
+if (
+  !Number.isInteger(port) ||
+  port < 1 ||
+  port > 65_535
+) {
+  throw new Error(
+    'PORT must be a valid port number',
+  );
+}
 
 export const env = {
   port,

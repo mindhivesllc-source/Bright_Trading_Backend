@@ -654,10 +654,9 @@ import {
 } from './easysoft-diamond.mapper';
 
 import {
-  buildEasysoftRunId,
-  buildKiraManagedFilter,
-  buildStaleEasysoftFilter,
-} from './easysoft-sync.util';
+  EASYSOFT_DB_CONNECTION,
+  KIRA_DB_CONNECTION,
+} from '../database/database.constants';
 
 type SyncDiamond = {
   stoneNo: string;
@@ -700,8 +699,12 @@ export class InventorySyncService {
     string | null = null;
 
   constructor(
-    @InjectModel(Diamond.name)
-    private readonly diamondModel:
+    @InjectModel(Diamond.name, KIRA_DB_CONNECTION)
+    private readonly kiraDiamondModel:
+      Model<DiamondDocument>,
+
+    @InjectModel(Diamond.name, EASYSOFT_DB_CONNECTION)
+    private readonly easysoftDiamondModel:
       Model<DiamondDocument>,
 
     private readonly kiraService:
@@ -871,8 +874,8 @@ export class InventorySyncService {
       /* ==================================================
          3. KIRA LIVE AVAILABILITY
 
-         Easysoft records are excluded inside syncAvailability
-         by the easysoft:* fullSyncRunId prefix.
+         Operates on the Kira Mongo connection only,
+         Easysoft has its own separate connection/collection.
       ================================================== */
 
       if (!this.availabilitySyncRunning) {
@@ -969,6 +972,7 @@ export class InventorySyncService {
         await this.saveFullBatch(
           batch,
           runId,
+          this.kiraDiamondModel,
         );
 
         processed += batch.length;
@@ -985,6 +989,7 @@ export class InventorySyncService {
       await this.saveFullBatch(
         batch,
         runId,
+        this.kiraDiamondModel,
       );
 
       processed += batch.length;
@@ -1012,17 +1017,11 @@ export class InventorySyncService {
     }
 
     const easysoftRunId =
-      buildEasysoftRunId(
-        parentRunId,
-      );
+      parentRunId;
 
     const currentEasysoftCount =
-      await this.diamondModel
-        .countDocuments({
-          fullSyncRunId: {
-            $regex: /^easysoft:/,
-          },
-        })
+      await this.easysoftDiamondModel
+        .countDocuments({})
         .exec();
 
     let batch: SyncDiamond[] = [];
@@ -1049,6 +1048,7 @@ export class InventorySyncService {
         await this.saveFullBatch(
           batch,
           easysoftRunId,
+          this.easysoftDiamondModel,
         );
 
         processed += batch.length;
@@ -1065,6 +1065,7 @@ export class InventorySyncService {
       await this.saveFullBatch(
         batch,
         easysoftRunId,
+        this.easysoftDiamondModel,
       );
 
       processed += batch.length;
@@ -1094,13 +1095,13 @@ export class InventorySyncService {
     }
 
     const staleEasysoftResult =
-      await this.diamondModel
+      await this.easysoftDiamondModel
         .updateMany(
           {
             isAvailable: true,
-            ...buildStaleEasysoftFilter(
-              easysoftRunId,
-            ),
+            fullSyncRunId: {
+              $ne: easysoftRunId,
+            },
           },
           {
             $set: {
@@ -1124,6 +1125,7 @@ export class InventorySyncService {
   private async saveFullBatch(
     diamonds: SyncDiamond[],
     runId: string,
+    model: Model<DiamondDocument>,
   ): Promise<void> {
     if (!diamonds.length) {
       return;
@@ -1160,7 +1162,7 @@ export class InventorySyncService {
     );
 
     const result =
-      await this.diamondModel.bulkWrite(
+      await model.bulkWrite(
         operations,
         {
           ordered: false,
@@ -1242,16 +1244,10 @@ export class InventorySyncService {
         );
       }
 
-      /*
-       * IMPORTANT:
-       * Count only Kira-managed rows.
-       * Easysoft rows have fullSyncRunId beginning with easysoft:.
-       */
       const currentAvailableCount =
-        await this.diamondModel
+        await this.kiraDiamondModel
           .countDocuments({
             isAvailable: true,
-            ...buildKiraManagedFilter(),
           })
           .exec();
 
@@ -1327,7 +1323,7 @@ export class InventorySyncService {
             },
           }));
 
-        await this.diamondModel
+        await this.kiraDiamondModel
           .bulkWrite(
             operations,
             {
@@ -1336,14 +1332,8 @@ export class InventorySyncService {
           );
       }
 
-      /*
-       * IMPORTANT:
-       * Easysoft records are excluded here.
-       * Otherwise the Kira availability list would mark every
-       * Easysoft-only diamond NOT AVAILABLE.
-       */
       const unavailableResult =
-        await this.diamondModel
+        await this.kiraDiamondModel
           .updateMany(
             {
               isAvailable: true,
@@ -1351,8 +1341,6 @@ export class InventorySyncService {
               availabilitySyncRunId: {
                 $ne: runId,
               },
-
-              ...buildKiraManagedFilter(),
             },
             {
               $set: {
