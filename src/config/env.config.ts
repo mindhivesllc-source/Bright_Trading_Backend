@@ -84,7 +84,7 @@ const jwtAudience =
 const corsOrigins =
   (
     process.env.CORS_ORIGINS ??
-    'http://localhost:5173'
+    'http://localhost:5173,https://brighttradingapp-production.up.railway.app'
   )
     .split(',')
     .map(
@@ -93,9 +93,9 @@ const corsOrigins =
     )
     .filter(Boolean);
 
-if (!mongoUri) {
+if (!mongoUri && !process.env.MONGO_URL) {
   throw new Error(
-    'MONGODB_URI is missing from environment variables',
+    'MONGODB_URI or MONGO_URL is missing from environment variables',
   );
 }
 
