@@ -105,10 +105,12 @@ function createMongoOptions(
   databaseNameVariable: string,
   uriVariable: string = 'MONGODB_URI',
 ): MongooseModuleOptions {
-  const uri =
-    configService.getOrThrow<string>(
-      uriVariable,
-    );
+  let uri = configService.get<string>(uriVariable);
+  
+  if (!uri) {
+    // Fallback to MONGO_URL which Railway uses by default
+    uri = configService.getOrThrow<string>('MONGO_URL');
+  }
 
   const dbName =
     configService.getOrThrow<string>(
