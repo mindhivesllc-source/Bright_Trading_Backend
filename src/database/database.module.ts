@@ -103,10 +103,11 @@ import {
 function createMongoOptions(
   configService: ConfigService,
   databaseNameVariable: string,
+  uriVariable: string = 'MONGODB_URI',
 ): MongooseModuleOptions {
   const uri =
     configService.getOrThrow<string>(
-      'MONGODB_URI',
+      uriVariable,
     );
 
   const dbName =
@@ -187,7 +188,11 @@ function createMongoOptions(
 
     /*
      * ----------------------------------------------------
-     * EASYSOFT CONNECTION
+     * EASYSOFT / BRAINTREE CONNECTION
+     *
+     * Points at the dedicated Brain Tree Mongo
+     * instance (MONGO_URL), not the shared
+     * MONGODB_URI used by core/kira.
      *
      * Database:
      * bright_easysoft
@@ -211,6 +216,7 @@ function createMongoOptions(
         createMongoOptions(
           configService,
           'MONGODB_EASYSOFT_DB',
+          'MONGO_URL',
         ),
     }),
   ],
