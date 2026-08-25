@@ -383,7 +383,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 
 import { InventoryController } from './inventory.controller';
-import { InventoryService } from './inventory.service';
+import {  KiraService } from './kira.service';
 import { InventorySearchService } from './inventory-search.service';
 
 import {
@@ -404,12 +404,12 @@ import {
   controllers: [InventoryController],
 
   providers: [
-    InventoryService,
+    KiraService,
     InventorySearchService,
   ],
 
   exports: [
-    InventoryService,
+    KiraService,
     InventorySearchService,
   ],
 })

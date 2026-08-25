@@ -1,92 +1,100 @@
 // import {
 //   Body,
 //   Controller,
+//   Get,
+//   HttpCode,
+//   HttpStatus,
 //   Post,
-//   Query,
 //   UseGuards,
 // } from '@nestjs/common';
 
-// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+// import {
+//   JwtAuthGuard,
+// } from '../auth/guards/jwt-auth.guard';
 
-// import { KiraService } from './kira.service';
+// import {
+//   SearchInventoryDto,
+// } from './dto/search-inventory.dto';
 
-// function clampInteger(
-//   value: string | undefined,
-//   minimum: number,
-//   maximum: number,
-//   fallback: number,
-// ): number {
-//   const parsedValue = Number(value);
+// import {
+//   InventorySearchService,
+// } from './inventory-search.service';
 
-//   if (!Number.isFinite(parsedValue)) {
-//     return fallback;
-//   }
-
-//   return Math.min(
-//     maximum,
-//     Math.max(
-//       minimum,
-//       Math.trunc(parsedValue),
-//     ),
-//   );
-// }
+// import {
+//   InventorySyncService,
+// } from './inventory-sync.service';
 
 // @Controller('inventory')
 // @UseGuards(JwtAuthGuard)
 // export class InventoryController {
 //   constructor(
-//     private readonly kiraService: KiraService,
+//     private readonly searchService:
+//       InventorySearchService,
+
+//     private readonly syncService:
+//       InventorySyncService,
 //   ) {}
 
+//   /*
+//    * Searches MongoDB.
+//    * This no longer calls Kira.
+//    */
 //   @Post('search')
-//   async searchInventory(
-//     @Query('pagestart')
-//     pageStartValue?: string,
-
-//     @Query('pageend')
-//     pageEndValue?: string,
-
+//   searchInventory(
 //     @Body()
-//     filters: Record<string, unknown> = {},
+//     dto: SearchInventoryDto,
 //   ) {
-//     const pageStart = clampInteger(
-//       pageStartValue,
-//       1,
-//       1_000_000,
-//       1,
-//     );
+//     return this.searchService
+//       .search(dto);
+//   }
 
-//     const requestedPageEnd =
-//       clampInteger(
-//         pageEndValue,
-//         pageStart,
-//         1_000_500,
-//         pageStart + 199,
-//       );
+//   /*
+//    * Starts the large CSV import in
+//    * the background and immediately
+//    * returns HTTP 202.
+//    *
+//    * Add an AdminGuard before production.
+//    */
+//   @Post('admin/sync/full')
+//   @HttpCode(HttpStatus.ACCEPTED)
+//   startFullSync() {
+//     return this.syncService
+//       .startFullSync();
+//   }
 
-//     const pageEnd = Math.min(
-//       requestedPageEnd,
-//       pageStart + 499,
-//     );
+//   /*
+//    * Starts a live availability refresh.
+//    *
+//    * Add an AdminGuard before production.
+//    */
+//   @Post(
+//     'admin/sync/availability',
+//   )
+//   @HttpCode(HttpStatus.ACCEPTED)
+//   startAvailabilitySync() {
+//     return this.syncService
+//       .startAvailabilitySync();
+//   }
 
-//     return this.kiraService.getInventory({
-//       pageStart,
-//       pageEnd,
-//       filters,
-//     });
+//   @Get('admin/sync/status')
+//   getSyncStatus() {
+//     return this.syncService
+//       .getStatus();
 //   }
 // }
 
 
 
-
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 
@@ -106,8 +114,11 @@ import {
   InventorySyncService,
 } from './inventory-sync.service';
 
+import {
+  KiraService,
+} from './kira.service';
+
 @Controller('inventory')
-@UseGuards(JwtAuthGuard)
 export class InventoryController {
   constructor(
     private readonly searchService:
@@ -115,50 +126,122 @@ export class InventoryController {
 
     private readonly syncService:
       InventorySyncService,
+
+    private readonly kiraService:
+      KiraService,
   ) {}
 
   /*
    * Searches MongoDB.
-   * This no longer calls Kira.
    */
   @Post('search')
+  @UseGuards(JwtAuthGuard)
   searchInventory(
     @Body()
     dto: SearchInventoryDto,
   ) {
-    return this.searchService
-      .search(dto);
+    return this.searchService.search(dto);
   }
 
   /*
-   * Starts the large CSV import in
-   * the background and immediately
-   * returns HTTP 202.
+   * =====================================================
+   * CERTIFICATE PROXY
+   * =====================================================
    *
-   * Add an AdminGuard before production.
+   * The browser opens OUR backend URL:
+   *
+   * /api/inventory/certificate/722551357
+   *
+   * Our backend privately downloads the certificate
+   * from Kira and streams it back.
+   *
+   * Therefore api.kiradiam.com is never exposed
+   * to the frontend/browser.
+   */
+  @Get('certificate/:reportNo')
+  async getCertificate(
+    @Param('reportNo')
+    reportNo: string,
+  ): Promise<StreamableFile> {
+    const safeReportNo =
+      String(reportNo || '').trim();
+
+    /*
+     * Prevent invalid/path-manipulation values.
+     *
+     * Normal certificate numbers such as:
+     * 722551357
+     * LG813609334
+     *
+     * are supported.
+     */
+    if (
+      !safeReportNo ||
+      !/^[A-Za-z0-9._-]+$/.test(
+        safeReportNo,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid certificate report number.',
+      );
+    }
+
+    const certificate =
+      await this.kiraService
+        .getCertificateByReportNo(
+          safeReportNo,
+        );
+
+    /*
+     * Stream the supplier response directly
+     * back to the browser.
+     */
+    return new StreamableFile(
+      certificate.stream,
+      {
+        type:
+          certificate.contentType ||
+          'application/pdf',
+
+        disposition:
+          `inline; filename="${safeReportNo}.pdf"`,
+      },
+    );
+  }
+
+  /*
+   * Starts full inventory synchronization.
    */
   @Post('admin/sync/full')
-  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(
+    HttpStatus.ACCEPTED,
+  )
   startFullSync() {
     return this.syncService
       .startFullSync();
   }
 
   /*
-   * Starts a live availability refresh.
-   *
-   * Add an AdminGuard before production.
+   * Starts availability synchronization.
    */
   @Post(
     'admin/sync/availability',
   )
-  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(
+    HttpStatus.ACCEPTED,
+  )
   startAvailabilitySync() {
     return this.syncService
       .startAvailabilitySync();
   }
 
+  /*
+   * Synchronization status.
+   */
   @Get('admin/sync/status')
+  @UseGuards(JwtAuthGuard)
   getSyncStatus() {
     return this.syncService
       .getStatus();
