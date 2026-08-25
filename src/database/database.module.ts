@@ -107,7 +107,11 @@ function createMongoOptions(
 ): MongooseModuleOptions {
   let uri = configService.get<string>(uriVariable);
   
-  if (!uri) {
+  // Validate that the URI actually looks like a Mongo string. 
+  // If the user left a placeholder in MONGODB_URI, it will bypass the empty check.
+  const isValidMongoUri = uri && (uri.startsWith('mongodb://') || uri.startsWith('mongodb+srv://'));
+
+  if (!isValidMongoUri) {
     // Fallback to MONGO_URL which Railway uses by default
     uri = configService.getOrThrow<string>('MONGO_URL');
   }
