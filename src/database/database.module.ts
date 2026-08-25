@@ -103,28 +103,24 @@ import {
 function createMongoOptions(
   configService: ConfigService,
   databaseNameVariable: string,
-  uriVariable: string = 'MONGODB_URI',
 ): MongooseModuleOptions {
-  let uri = configService.get<string>(uriVariable);
-  
-  // Validate that the URI actually looks like a Mongo string. 
-  // If the user left a placeholder in MONGODB_URI, it will bypass the empty check.
-  const isValidMongoUri = uri && (uri.startsWith('mongodb://') || uri.startsWith('mongodb+srv://'));
-
-  if (!isValidMongoUri) {
-    // Fallback to MONGO_URL which Railway uses by default
-    uri = configService.getOrThrow<string>('MONGO_URL');
-  }
+  /*
+   * Accept MONGODB_URI first, then
+   * Railway's auto-provided MONGO_URL.
+   */
+  const uri =
+    configService.get<string>('MONGODB_URI') ||
+    configService.get<string>('MONGO_URL') ||
+    '';
 
   const dbName =
-    configService.getOrThrow<string>(
+    configService.get<string>(
       databaseNameVariable,
-    );
+    ) || databaseNameVariable.replace('MONGODB_', '').replace('_DB', '').toLowerCase();
 
   return {
     uri,
     dbName,
-
     serverSelectionTimeoutMS: 15_000,
     connectTimeoutMS: 15_000,
   };
