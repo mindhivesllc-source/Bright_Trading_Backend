@@ -51,21 +51,27 @@ export class EasysoftService {
 
     try {
       const response =
-        await this.httpService.axiosRef.post<EasysoftApiResponse>(
-          this.apiUrl,
-          null,
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: this.authorization,
-              "Content-Type": "application/json",
-            },
+        await this.httpService.axiosRef.request<EasysoftApiResponse>({
+          method: "POST",
 
-            timeout: 600_000,
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
+          url: this.apiUrl,
+
+          headers: {
+            Accept: "application/json",
+
+            Authorization: this.authorization.trim(),
           },
-        );
+
+          // IMPORTANT:
+          // Do NOT send data/body.
+          // Do NOT manually send Content-Type.
+
+          timeout: 180_000,
+
+          maxContentLength: Infinity,
+
+          maxBodyLength: Infinity,
+        });
 
       const records = response.data?.record;
 
