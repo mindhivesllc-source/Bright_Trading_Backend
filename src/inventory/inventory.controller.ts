@@ -1,10 +1,100 @@
+// // import {
+// //   Body,
+// //   Controller,
+// //   Get,
+// //   HttpCode,
+// //   HttpStatus,
+// //   Post,
+// //   UseGuards,
+// // } from '@nestjs/common';
+
+// // import {
+// //   JwtAuthGuard,
+// // } from '../auth/guards/jwt-auth.guard';
+
+// // import {
+// //   SearchInventoryDto,
+// // } from './dto/search-inventory.dto';
+
+// // import {
+// //   InventorySearchService,
+// // } from './inventory-search.service';
+
+// // import {
+// //   InventorySyncService,
+// // } from './inventory-sync.service';
+
+// // @Controller('inventory')
+// // @UseGuards(JwtAuthGuard)
+// // export class InventoryController {
+// //   constructor(
+// //     private readonly searchService:
+// //       InventorySearchService,
+
+// //     private readonly syncService:
+// //       InventorySyncService,
+// //   ) {}
+
+// //   /*
+// //    * Searches MongoDB.
+// //    * This no longer calls Kira.
+// //    */
+// //   @Post('search')
+// //   searchInventory(
+// //     @Body()
+// //     dto: SearchInventoryDto,
+// //   ) {
+// //     return this.searchService
+// //       .search(dto);
+// //   }
+
+// //   /*
+// //    * Starts the large CSV import in
+// //    * the background and immediately
+// //    * returns HTTP 202.
+// //    *
+// //    * Add an AdminGuard before production.
+// //    */
+// //   @Post('admin/sync/full')
+// //   @HttpCode(HttpStatus.ACCEPTED)
+// //   startFullSync() {
+// //     return this.syncService
+// //       .startFullSync();
+// //   }
+
+// //   /*
+// //    * Starts a live availability refresh.
+// //    *
+// //    * Add an AdminGuard before production.
+// //    */
+// //   @Post(
+// //     'admin/sync/availability',
+// //   )
+// //   @HttpCode(HttpStatus.ACCEPTED)
+// //   startAvailabilitySync() {
+// //     return this.syncService
+// //       .startAvailabilitySync();
+// //   }
+
+// //   @Get('admin/sync/status')
+// //   getSyncStatus() {
+// //     return this.syncService
+// //       .getStatus();
+// //   }
+// // }
+
+
+
 // import {
+//   BadRequestException,
 //   Body,
 //   Controller,
 //   Get,
 //   HttpCode,
 //   HttpStatus,
+//   Param,
 //   Post,
+//   StreamableFile,
 //   UseGuards,
 // } from '@nestjs/common';
 
@@ -24,8 +114,11 @@
 //   InventorySyncService,
 // } from './inventory-sync.service';
 
+// import {
+//   KiraService,
+// } from './kira.service';
+
 // @Controller('inventory')
-// @UseGuards(JwtAuthGuard)
 // export class InventoryController {
 //   constructor(
 //     private readonly searchService:
@@ -33,56 +126,127 @@
 
 //     private readonly syncService:
 //       InventorySyncService,
+
+//     private readonly kiraService:
+//       KiraService,
 //   ) {}
 
 //   /*
 //    * Searches MongoDB.
-//    * This no longer calls Kira.
 //    */
 //   @Post('search')
+//   @UseGuards(JwtAuthGuard)
 //   searchInventory(
 //     @Body()
 //     dto: SearchInventoryDto,
 //   ) {
-//     return this.searchService
-//       .search(dto);
+//     return this.searchService.search(dto);
 //   }
 
 //   /*
-//    * Starts the large CSV import in
-//    * the background and immediately
-//    * returns HTTP 202.
+//    * =====================================================
+//    * CERTIFICATE PROXY
+//    * =====================================================
 //    *
-//    * Add an AdminGuard before production.
+//    * The browser opens OUR backend URL:
+//    *
+//    * /api/inventory/certificate/722551357
+//    *
+//    * Our backend privately downloads the certificate
+//    * from Kira and streams it back.
+//    *
+//    * Therefore api.kiradiam.com is never exposed
+//    * to the frontend/browser.
+//    */
+//   @Get('certificate/:reportNo')
+//   async getCertificate(
+//     @Param('reportNo')
+//     reportNo: string,
+//   ): Promise<StreamableFile> {
+//     const safeReportNo =
+//       String(reportNo || '').trim();
+
+//     /*
+//      * Prevent invalid/path-manipulation values.
+//      *
+//      * Normal certificate numbers such as:
+//      * 722551357
+//      * LG813609334
+//      *
+//      * are supported.
+//      */
+//     if (
+//       !safeReportNo ||
+//       !/^[A-Za-z0-9._-]+$/.test(
+//         safeReportNo,
+//       )
+//     ) {
+//       throw new BadRequestException(
+//         'Invalid certificate report number.',
+//       );
+//     }
+
+//     const certificate =
+//       await this.kiraService
+//         .getCertificateByReportNo(
+//           safeReportNo,
+//         );
+
+//     /*
+//      * Stream the supplier response directly
+//      * back to the browser.
+//      */
+//     return new StreamableFile(
+//       certificate.stream,
+//       {
+//         type:
+//           certificate.contentType ||
+//           'application/pdf',
+
+//         disposition:
+//           `inline; filename="${safeReportNo}.pdf"`,
+//       },
+//     );
+//   }
+
+//   /*
+//    * Starts full inventory synchronization.
 //    */
 //   @Post('admin/sync/full')
-//   @HttpCode(HttpStatus.ACCEPTED)
+//   @UseGuards(JwtAuthGuard)
+//   @HttpCode(
+//     HttpStatus.ACCEPTED,
+//   )
 //   startFullSync() {
 //     return this.syncService
 //       .startFullSync();
 //   }
 
 //   /*
-//    * Starts a live availability refresh.
-//    *
-//    * Add an AdminGuard before production.
+//    * Starts availability synchronization.
 //    */
 //   @Post(
 //     'admin/sync/availability',
 //   )
-//   @HttpCode(HttpStatus.ACCEPTED)
+//   @UseGuards(JwtAuthGuard)
+//   @HttpCode(
+//     HttpStatus.ACCEPTED,
+//   )
 //   startAvailabilitySync() {
 //     return this.syncService
 //       .startAvailabilitySync();
 //   }
 
+//   /*
+//    * Synchronization status.
+//    */
 //   @Get('admin/sync/status')
+//   @UseGuards(JwtAuthGuard)
 //   getSyncStatus() {
 //     return this.syncService
 //       .getStatus();
 //   }
 // }
-
 
 
 import {
@@ -98,37 +262,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import {
-  JwtAuthGuard,
-} from '../auth/guards/jwt-auth.guard';
-
-import {
-  SearchInventoryDto,
-} from './dto/search-inventory.dto';
-
-import {
-  InventorySearchService,
-} from './inventory-search.service';
-
-import {
-  InventorySyncService,
-} from './inventory-sync.service';
-
-import {
-  KiraService,
-} from './kira.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { SearchInventoryDto } from './dto/search-inventory.dto';
+import { InventorySearchService } from './inventory-search.service';
+import { InventorySyncService } from './inventory-sync.service';
+import { KiraService } from './kira.service';
 
 @Controller('inventory')
 export class InventoryController {
   constructor(
-    private readonly searchService:
-      InventorySearchService,
-
-    private readonly syncService:
-      InventorySyncService,
-
-    private readonly kiraService:
-      KiraService,
+    private readonly searchService: InventorySearchService,
+    private readonly syncService: InventorySyncService,
+    private readonly kiraService: KiraService,
   ) {}
 
   /*
@@ -137,8 +282,7 @@ export class InventoryController {
   @Post('search')
   @UseGuards(JwtAuthGuard)
   searchInventory(
-    @Body()
-    dto: SearchInventoryDto,
+    @Body() dto: SearchInventoryDto,
   ) {
     return this.searchService.search(dto);
   }
@@ -160,11 +304,9 @@ export class InventoryController {
    */
   @Get('certificate/:reportNo')
   async getCertificate(
-    @Param('reportNo')
-    reportNo: string,
+    @Param('reportNo') reportNo: string,
   ): Promise<StreamableFile> {
-    const safeReportNo =
-      String(reportNo || '').trim();
+    const safeReportNo = String(reportNo || '').trim();
 
     /*
      * Prevent invalid/path-manipulation values.
@@ -177,36 +319,24 @@ export class InventoryController {
      */
     if (
       !safeReportNo ||
-      !/^[A-Za-z0-9._-]+$/.test(
-        safeReportNo,
-      )
+      !/^[A-Za-z0-9._-]+$/.test(safeReportNo)
     ) {
       throw new BadRequestException(
         'Invalid certificate report number.',
       );
     }
 
-    const certificate =
-      await this.kiraService
-        .getCertificateByReportNo(
-          safeReportNo,
-        );
+    const certificate = await this.kiraService
+      .getCertificateByReportNo(safeReportNo);
 
     /*
      * Stream the supplier response directly
      * back to the browser.
      */
-    return new StreamableFile(
-      certificate.stream,
-      {
-        type:
-          certificate.contentType ||
-          'application/pdf',
-
-        disposition:
-          `inline; filename="${safeReportNo}.pdf"`,
-      },
-    );
+    return new StreamableFile(certificate.stream, {
+      type: certificate.contentType || 'application/pdf',
+      disposition: `inline; filename="${safeReportNo}.pdf"`,
+    });
   }
 
   /*
@@ -214,27 +344,19 @@ export class InventoryController {
    */
   @Post('admin/sync/full')
   @UseGuards(JwtAuthGuard)
-  @HttpCode(
-    HttpStatus.ACCEPTED,
-  )
+  @HttpCode(HttpStatus.ACCEPTED)
   startFullSync() {
-    return this.syncService
-      .startFullSync();
+    return this.syncService.startFullSync();
   }
 
   /*
    * Starts availability synchronization.
    */
-  @Post(
-    'admin/sync/availability',
-  )
+  @Post('admin/sync/availability')
   @UseGuards(JwtAuthGuard)
-  @HttpCode(
-    HttpStatus.ACCEPTED,
-  )
+  @HttpCode(HttpStatus.ACCEPTED)
   startAvailabilitySync() {
-    return this.syncService
-      .startAvailabilitySync();
+    return this.syncService.startAvailabilitySync();
   }
 
   /*
@@ -243,7 +365,6 @@ export class InventoryController {
   @Get('admin/sync/status')
   @UseGuards(JwtAuthGuard)
   getSyncStatus() {
-    return this.syncService
-      .getStatus();
+    return this.syncService.getStatus();
   }
 }
