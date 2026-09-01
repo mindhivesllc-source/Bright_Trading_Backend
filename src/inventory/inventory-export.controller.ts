@@ -12,7 +12,7 @@ import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { KiraService } from './kira.service';
 
-const ADMIN_EXPORT_EMAIL = 'adminstrator@brightdia.com';
+const ADMIN_EXPORT_EMAIL = 'administrator@brightdia.com';
 
 type AuthenticatedRequest = Request & {
   user?: Record<string, unknown>;
