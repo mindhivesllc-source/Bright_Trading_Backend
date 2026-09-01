@@ -5,14 +5,19 @@ import {
   Req,
   StreamableFile,
   UseGuards,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
-import type { Request } from 'express';
+import type { Request } from "express";
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { KiraService } from './kira.service';
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { KiraService } from "./kira.service";
 
-const ADMIN_EXPORT_EMAIL = 'administrator@brightdia.com';
+const ADMIN_EXPORT_EMAILS = [
+  'administrator@brightdia.com',
+  'secondadmin@brightdia.com',
+].map((email) =>
+  email.trim().toLowerCase(),
+);
 
 type AuthenticatedRequest = Request & {
   user?: Record<string, unknown>;
@@ -20,7 +25,7 @@ type AuthenticatedRequest = Request & {
 
 function getAuthenticatedEmail(user?: Record<string, unknown>): string {
   if (!user) {
-    return '';
+    return "";
   }
 
   const candidates = [
@@ -33,28 +38,28 @@ function getAuthenticatedEmail(user?: Record<string, unknown>): string {
   ];
 
   for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
+    if (typeof candidate === "string" && candidate.trim()) {
       return candidate.trim().toLowerCase();
     }
   }
 
-  return '';
+  return "";
 }
 
-@Controller('inventory')
+@Controller("inventory")
 export class InventoryExportController {
   constructor(private readonly kiraService: KiraService) {}
 
-  @Get('export')
+  @Get("export")
   @UseGuards(JwtAuthGuard)
   async exportAllInventory(
     @Req() request: AuthenticatedRequest,
   ): Promise<StreamableFile> {
     const userEmail = getAuthenticatedEmail(request.user);
 
-    if (userEmail !== ADMIN_EXPORT_EMAIL) {
+    if (!ADMIN_EXPORT_EMAILS.includes(userEmail)) {
       throw new ForbiddenException(
-        'You do not have permission to export the full inventory.',
+        "You do not have permission to export the full inventory.",
       );
     }
 
@@ -63,7 +68,7 @@ export class InventoryExportController {
     const date = new Date().toISOString().slice(0, 10);
 
     return new StreamableFile(csvStream, {
-      type: 'text/csv; charset=utf-8',
+      type: "text/csv; charset=utf-8",
       disposition: `attachment; filename="bright-trading-full-inventory-${date}.csv"`,
     });
   }
