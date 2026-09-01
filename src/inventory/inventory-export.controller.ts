@@ -14,7 +14,7 @@ import { KiraService } from "./kira.service";
 
 const ADMIN_EXPORT_EMAILS = [
   'administrator@brightdia.com',
-  'secondadmin@brightdia.com',
+  'romy@brightdia.com',
 ].map((email) =>
   email.trim().toLowerCase(),
 );
