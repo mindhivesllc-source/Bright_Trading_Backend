@@ -4,11 +4,11 @@ import {
   InternalServerErrorException,
   Logger,
   UnauthorizedException,
-} from '@nestjs/common';
+} from "@nestjs/common";
 
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { Readable } from 'node:stream';
+import { ConfigService } from "@nestjs/config";
+import { HttpService } from "@nestjs/axios";
+import { Readable } from "node:stream";
 
 type KiraTokenPayload = {
   exp?: number;
@@ -41,19 +41,21 @@ export class KiraService {
     private readonly configService: ConfigService,
   ) {
     this.baseUrl = (
-      this.configService.get<string>('KIRA_API_BASE_URL') ||
-      'https://api.kiradiam.com/api/ApiOrder'
-    ).replace(/\/+$/, '');
+      this.configService.get<string>("KIRA_API_BASE_URL") ||
+      "https://api.kiradiam.com/api/ApiOrder"
+    ).replace(/\/+$/, "");
 
-    this.username =
-      this.configService.get<string>('KIRA_USERNAME') || '';
+    this.username = (
+      this.configService.get<string>("KIRA_USERNAME") || ""
+    ).trim();
 
-    this.password =
-      this.configService.get<string>('KIRA_PASSWORD') || '';
+    this.password = (
+      this.configService.get<string>("KIRA_PASSWORD") || ""
+    ).trim();
 
     if (!this.username || !this.password) {
       throw new InternalServerErrorException(
-        'KIRA_USERNAME and KIRA_PASSWORD must be configured on the server.',
+        "KIRA_USERNAME and KIRA_PASSWORD must be configured on the server.",
       );
     }
   }
@@ -76,11 +78,11 @@ export class KiraService {
             },
 
             headers: {
-              Accept: 'text/csv, text/plain, */*',
+              Accept: "text/csv, text/plain, */*",
               Authorization: `Bearer ${token}`,
             },
 
-            responseType: 'stream',
+            responseType: "stream",
 
             /*
              * Full exports can be much larger than normal inventory requests.
@@ -98,7 +100,7 @@ export class KiraService {
     } catch (error) {
       throw this.toKiraException(
         error,
-        'Kira CSV inventory could not be downloaded.',
+        "Kira CSV inventory could not be downloaded.",
       );
     }
   }
@@ -113,25 +115,21 @@ export class KiraService {
       return await this.withTokenRetry(async (token) => {
         const response = await this.httpService.axiosRef.post<
           AvailableKiraStone[]
-        >(
-          `${this.baseUrl}/GetAvailableStockDetailLimited`,
-          null,
-          {
-            headers: {
-              Accept: 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-
-            timeout: 120_000,
+        >(`${this.baseUrl}/GetAvailableStockDetailLimited`, null, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
           },
-        );
+
+          timeout: 120_000,
+        });
 
         return Array.isArray(response.data) ? response.data : [];
       });
     } catch (error) {
       throw this.toKiraException(
         error,
-        'Kira availability list could not be downloaded.',
+        "Kira availability list could not be downloaded.",
       );
     }
   }
@@ -157,9 +155,9 @@ export class KiraService {
             },
 
             headers: {
-              Accept: 'application/json',
+              Accept: "text/csv, text/plain, */*",
               Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
 
             timeout: 120_000,
@@ -186,19 +184,16 @@ export class KiraService {
   async getCertificateByReportNo(
     reportNo: string,
   ): Promise<KiraCertificateResponse> {
-    const safeReportNo = String(reportNo || '').trim();
+    const safeReportNo = String(reportNo || "").trim();
 
     if (!safeReportNo) {
-      throw new BadGatewayException(
-        'Certificate report number is required.',
-      );
+      throw new BadGatewayException("Certificate report number is required.");
     }
 
     try {
       const kiraOrigin = new URL(this.baseUrl).origin;
 
-      const certificateUrl =
-        `${kiraOrigin}/api/FTP/GetCertificateByReportNo`;
+      const certificateUrl = `${kiraOrigin}/api/FTP/GetCertificateByReportNo`;
 
       const response = await this.httpService.axiosRef.get<Readable>(
         certificateUrl,
@@ -208,11 +203,10 @@ export class KiraService {
           },
 
           headers: {
-            Accept:
-              'application/pdf, application/octet-stream, */*',
+            Accept: "application/pdf, application/octet-stream, */*",
           },
 
-          responseType: 'stream',
+          responseType: "stream",
           timeout: 120_000,
           maxContentLength: Infinity,
           maxBodyLength: Infinity,
@@ -220,7 +214,7 @@ export class KiraService {
       );
 
       const contentType = String(
-        response.headers['content-type'] || 'application/pdf',
+        response.headers["content-type"] || "application/pdf",
       );
 
       return {
@@ -267,12 +261,9 @@ export class KiraService {
    * ACCESS TOKEN
    * =====================================================
    */
-  private async getAccessToken(
-    forceRefresh = false,
-  ): Promise<string> {
+  private async getAccessToken(forceRefresh = false): Promise<string> {
     const tokenStillValid =
-      this.cachedToken &&
-      Date.now() < this.tokenExpiresAt - 60_000;
+      this.cachedToken && Date.now() < this.tokenExpiresAt - 60_000;
 
     if (!forceRefresh && tokenStillValid) {
       return this.cachedToken as string;
@@ -308,8 +299,8 @@ export class KiraService {
           },
 
           headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
+            Accept: "application/json",
+            "Content-Type": "application/json",
           },
 
           timeout: 30_000,
@@ -320,15 +311,14 @@ export class KiraService {
 
       if (!token) {
         throw new BadGatewayException(
-          'Kira VerifyUser returned no usable token.',
+          "Kira VerifyUser returned no usable token.",
         );
       }
 
       this.cachedToken = token;
 
       this.tokenExpiresAt =
-        this.readTokenExpiry(token) ||
-        Date.now() + 10 * 60 * 1000;
+        this.readTokenExpiry(token) || Date.now() + 10 * 60 * 1000;
 
       return token;
     } catch (error) {
@@ -340,13 +330,13 @@ export class KiraService {
 
       if (status === 401 || status === 403) {
         throw new UnauthorizedException(
-          'The configured Kira supplier credentials were rejected.',
+          "The configured Kira supplier credentials were rejected.",
         );
       }
 
       throw this.toKiraException(
         error,
-        'Unable to create a Kira supplier session.',
+        "Unable to create a Kira supplier session.",
       );
     }
   }
@@ -357,11 +347,11 @@ export class KiraService {
    * =====================================================
    */
   private extractToken(data: unknown): string | null {
-    if (typeof data === 'string') {
+    if (typeof data === "string") {
       return this.cleanToken(data);
     }
 
-    if (!data || typeof data !== 'object') {
+    if (!data || typeof data !== "object") {
       return null;
     }
 
@@ -378,7 +368,7 @@ export class KiraService {
       source.AuthToken,
     ];
 
-    if (source.data && typeof source.data === 'object') {
+    if (source.data && typeof source.data === "object") {
       const nested = source.data as Record<string, unknown>;
 
       candidates.push(
@@ -392,7 +382,7 @@ export class KiraService {
     }
 
     for (const candidate of candidates) {
-      if (typeof candidate === 'string') {
+      if (typeof candidate === "string") {
         const token = this.cleanToken(candidate);
 
         if (token) {
@@ -412,10 +402,10 @@ export class KiraService {
   private cleanToken(value: string): string | null {
     const cleaned = value
       .trim()
-      .replace(/^"|"$/g, '')
-      .replace(/^Bearer\s+/i, '');
+      .replace(/^"|"$/g, "")
+      .replace(/^Bearer\s+/i, "");
 
-    return cleaned.split('.').length === 3 ? cleaned : null;
+    return cleaned.split(".").length === 3 ? cleaned : null;
   }
 
   /*
@@ -425,18 +415,14 @@ export class KiraService {
    */
   private readTokenExpiry(token: string): number | null {
     try {
-      const payloadSegment = token.split('.')[1];
+      const payloadSegment = token.split(".")[1];
 
-      const normalized = payloadSegment
-        .replace(/-/g, '+')
-        .replace(/_/g, '/');
+      const normalized = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
 
-      const padded =
-        normalized +
-        '='.repeat((4 - (normalized.length % 4)) % 4);
+      const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
 
       const payload = JSON.parse(
-        Buffer.from(padded, 'base64').toString('utf8'),
+        Buffer.from(padded, "base64").toString("utf8"),
       ) as KiraTokenPayload;
 
       return payload.exp ? payload.exp * 1000 : null;
@@ -461,11 +447,7 @@ export class KiraService {
    * =====================================================
    */
   private getStatus(error: unknown): number | undefined {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'response' in error
-    ) {
+    if (error && typeof error === "object" && "response" in error) {
       return (
         error as {
           response?: {
@@ -484,14 +466,8 @@ export class KiraService {
    * =====================================================
    */
   private getErrorCode(error: unknown): string | undefined {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error
-    ) {
-      return String(
-        (error as { code?: unknown }).code || '',
-      );
+    if (error && typeof error === "object" && "code" in error) {
+      return String((error as { code?: unknown }).code || "");
     }
 
     return undefined;
@@ -502,10 +478,7 @@ export class KiraService {
    * ERROR CONVERSION
    * =====================================================
    */
-  private toKiraException(
-    error: unknown,
-    fallbackMessage: string,
-  ) {
+  private toKiraException(error: unknown, fallbackMessage: string) {
     const status = this.getStatus(error);
     const code = this.getErrorCode(error);
 
@@ -513,27 +486,20 @@ export class KiraService {
       message: fallbackMessage,
       upstreamStatus: status,
       errorCode: code,
-      errorMessage:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      errorMessage: error instanceof Error ? error.message : String(error),
     });
 
     if (status === 401 || status === 403) {
-      return new BadGatewayException(
-        'Kira rejected the supplier session.',
-      );
+      return new BadGatewayException("Kira rejected the supplier session.");
     }
 
     if (
       status === 408 ||
       status === 504 ||
-      code === 'ECONNABORTED' ||
-      code === 'ETIMEDOUT'
+      code === "ECONNABORTED" ||
+      code === "ETIMEDOUT"
     ) {
-      return new BadGatewayException(
-        'Kira request timed out.',
-      );
+      return new BadGatewayException("Kira request timed out.");
     }
 
     return new BadGatewayException(fallbackMessage);
