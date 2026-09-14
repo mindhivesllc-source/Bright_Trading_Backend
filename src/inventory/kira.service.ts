@@ -65,45 +65,49 @@ export class KiraService {
    * FULL INVENTORY CSV
    * =====================================================
    */
-  async downloadFullInventoryCsv(): Promise<Readable> {
-    try {
-      return await this.withTokenRetry(async (token) => {
-        const response = await this.httpService.axiosRef.post<Readable>(
-          `${this.baseUrl}/GetStockDetailForThirdPartyCSV`,
-          null,
-          {
-            params: {
-              pagestart: 1,
-              pageend: 800000,
+ async downloadFullInventoryCsv(): Promise<Readable> {
+  try {
+    return await this.withTokenRetry(
+      async (token) => {
+        const response =
+          await this.httpService.axiosRef.post<Readable>(
+            `${this.baseUrl}/GetStockDetailForThirdPartyCSV`,
+            null,
+            {
+              params: {
+                pagestart: 1,
+                pageend: 800000,
+              },
+
+              headers: {
+                Accept: 'text/csv, text/plain, */*',
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+
+              responseType: 'stream',
+              timeout: 600_000,
+              maxContentLength: Infinity,
+              maxBodyLength: Infinity,
             },
-
-            headers: {
-              Accept: "text/csv, text/plain, */*",
-              Authorization: `Bearer ${token}`,
-            },
-
-            responseType: "stream",
-
-            /*
-             * Full exports can be much larger than normal inventory requests.
-             * This only affects the export request.
-             */
-            timeout: 600_000,
-
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-          },
-        );
+          );
 
         return response.data;
-      });
-    } catch (error) {
-      throw this.toKiraException(
-        error,
-        "Kira CSV inventory could not be downloaded.",
-      );
-    }
+      },
+
+      /*
+       * Important:
+       * Full export should always use a fresh Kira session.
+       */
+      true,
+    );
+  } catch (error) {
+    throw this.toKiraException(
+      error,
+      'Kira CSV inventory could not be downloaded.',
+    );
   }
+}
 
   /*
    * =====================================================
@@ -234,27 +238,40 @@ export class KiraService {
    * TOKEN RETRY
    * =====================================================
    */
-  private async withTokenRetry<T>(
-    request: (token: string) => Promise<T>,
-  ): Promise<T> {
-    let token = await this.getAccessToken();
+ private async withTokenRetry<T>(
+  request: (token: string) => Promise<T>,
+  forceFreshToken = false,
+): Promise<T> {
+  let token =
+    await this.getAccessToken(
+      forceFreshToken,
+    );
 
-    try {
-      return await request(token);
-    } catch (error) {
-      const status = this.getStatus(error);
+  try {
+    return await request(token);
+  } catch (error) {
+    const status =
+      this.getStatus(error);
 
-      if (status !== 401) {
-        throw error;
-      }
-
-      this.clearCachedToken();
-
-      token = await this.getAccessToken(true);
-
-      return request(token);
+    /*
+     * Kira sometimes rejects expired/invalid sessions with 403,
+     * not only 401. So retry both.
+     */
+    if (
+      status !== 401 &&
+      status !== 403
+    ) {
+      throw error;
     }
+
+    this.clearCachedToken();
+
+    token =
+      await this.getAccessToken(true);
+
+    return request(token);
   }
+}
 
   /*
    * =====================================================
