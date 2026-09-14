@@ -8,7 +8,7 @@ import {
 
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
-import { Readable } from "node:stream";
+import { Readable, PassThrough } from "node:stream";
 
 type KiraTokenPayload = {
   exp?: number;
@@ -65,49 +65,81 @@ export class KiraService {
    * FULL INVENTORY CSV
    * =====================================================
    */
- async downloadFullInventoryCsv(): Promise<Readable> {
-  try {
-    return await this.withTokenRetry(
-      async (token) => {
-        const response =
-          await this.httpService.axiosRef.post<Readable>(
-            `${this.baseUrl}/GetStockDetailForThirdPartyCSV`,
-            null,
-            {
-              params: {
-                pagestart: 1,
-                pageend: 800000,
+  async downloadFullInventoryCsv(): Promise<Readable> {
+    const passThrough = new PassThrough();
+
+    (async () => {
+      try {
+        const limit = 10000;
+        let start = 1;
+        let isFirstChunk = true;
+
+        while (true) {
+          const end = start + limit - 1;
+
+          const textData = await this.withTokenRetry(async (token) => {
+            const response = await this.httpService.axiosRef.post<string>(
+              `${this.baseUrl}/GetStockDetailForThirdPartyCSV`,
+              null,
+              {
+                params: {
+                  pagestart: start,
+                  pageend: end,
+                },
+                headers: {
+                  Accept: "text/csv, text/plain, */*",
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+                responseType: "text",
+                timeout: 120_000,
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity,
               },
+            );
+            return response.data;
+          }, isFirstChunk);
 
-              headers: {
-                Accept: 'text/csv, text/plain, */*',
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
+          if (!textData || textData.trim().length === 0) {
+            break;
+          }
 
-              responseType: 'stream',
-              timeout: 600_000,
-              maxContentLength: Infinity,
-              maxBodyLength: Infinity,
-            },
-          );
+          let chunkToWrite = textData;
 
-        return response.data;
-      },
+          if (!isFirstChunk) {
+            const firstNewline = chunkToWrite.indexOf("\n");
+            if (firstNewline !== -1) {
+              chunkToWrite = chunkToWrite.substring(firstNewline + 1);
+            }
+          }
 
-      /*
-       * Important:
-       * Full export should always use a fresh Kira session.
-       */
-      true,
-    );
-  } catch (error) {
-    throw this.toKiraException(
-      error,
-      'Bright CSV inventory could not be downloaded.',
-    );
+          if (chunkToWrite.trim().length === 0) {
+            break;
+          }
+
+          passThrough.write(chunkToWrite);
+          
+          const lineCount = (textData.match(/\n/g) || []).length;
+          if (lineCount < limit * 0.9) {
+            break;
+          }
+
+          start += limit;
+          isFirstChunk = false;
+        }
+
+        passThrough.end();
+      } catch (error) {
+        const kiraErr = this.toKiraException(
+          error,
+          "Bright CSV inventory could not be downloaded."
+        );
+        passThrough.destroy(kiraErr);
+      }
+    })();
+
+    return passThrough;
   }
-}
 
   /*
    * =====================================================
