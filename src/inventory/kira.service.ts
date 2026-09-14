@@ -55,7 +55,7 @@ export class KiraService {
 
     if (!this.username || !this.password) {
       throw new InternalServerErrorException(
-        "KIRA_USERNAME and KIRA_PASSWORD must be configured on the server.",
+        "_USERNAME and _PASSWORD must be configured on the server.",
       );
     }
   }
@@ -104,7 +104,7 @@ export class KiraService {
   } catch (error) {
     throw this.toKiraException(
       error,
-      'Kira CSV inventory could not be downloaded.',
+      'Bright CSV inventory could not be downloaded.',
     );
   }
 }
@@ -133,7 +133,7 @@ export class KiraService {
     } catch (error) {
       throw this.toKiraException(
         error,
-        "Kira availability list could not be downloaded.",
+        "Bright availability list could not be downloaded.",
       );
     }
   }
@@ -175,7 +175,7 @@ export class KiraService {
     } catch (error) {
       throw this.toKiraException(
         error,
-        `Could not download Kira records ${pageStart}-${pageEnd}.`,
+        `Could not download Bright records ${pageStart}-${pageEnd}.`,
       );
     }
   }
@@ -328,7 +328,7 @@ export class KiraService {
 
       if (!token) {
         throw new BadGatewayException(
-          "Kira VerifyUser returned no usable token.",
+          "Bright VerifyUser returned no usable token.",
         );
       }
 
@@ -347,13 +347,13 @@ export class KiraService {
 
       if (status === 401 || status === 403) {
         throw new UnauthorizedException(
-          "The configured Kira supplier credentials were rejected.",
+          "The configured Bright supplier credentials were rejected.",
         );
       }
 
       throw this.toKiraException(
         error,
-        "Unable to create a Kira supplier session.",
+        "Unable to create a Bright supplier session.",
       );
     }
   }
@@ -507,7 +507,7 @@ export class KiraService {
     });
 
     if (status === 401 || status === 403) {
-      return new BadGatewayException("Kira rejected the supplier session.");
+      return new BadGatewayException("Bright rejected the supplier session.");
     }
 
     if (
@@ -516,7 +516,7 @@ export class KiraService {
       code === "ECONNABORTED" ||
       code === "ETIMEDOUT"
     ) {
-      return new BadGatewayException("Kira request timed out.");
+      return new BadGatewayException("Bright request timed out.");
     }
 
     return new BadGatewayException(fallbackMessage);
