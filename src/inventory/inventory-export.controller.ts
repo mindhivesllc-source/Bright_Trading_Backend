@@ -150,10 +150,39 @@ export class CombinedInventoryExportService {
     this.logger.log("Combined CSV export: requesting Bright and Easysoft inventories...");
 
     // Keep upstream failures before the HTTP 200 response.
-    const [brightCsv, easysoftRecords] = await Promise.all([
-      this.readBrightCsv(),
-      this.easysoftService.getDiamondList(),
-    ]);
+    
+const [brightCsv, easysoftRecords] = await Promise.all([
+  (async () => {
+    const start = Date.now();
+
+    try {
+      return await this.readBrightCsv();
+    } finally {
+      this.logger.log(
+        `Bright inventory fetch took ${(
+          (Date.now() - start) /
+          1000
+        ).toFixed(2)} seconds`,
+      );
+    }
+  })(),
+
+  (async () => {
+    const start = Date.now();
+
+    try {
+      return await this.easysoftService.getDiamondList();
+    } finally {
+      this.logger.log(
+        `Easysoft inventory fetch took ${(
+          (Date.now() - start) /
+          1000
+        ).toFixed(2)} seconds`,
+      );
+    }
+  })(),
+]);
+
 
     const parsed = parseCsv(brightCsv);
     if (!parsed.length || !parsed[0].some(Boolean)) {
