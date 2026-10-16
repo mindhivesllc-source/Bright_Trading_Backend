@@ -66,18 +66,18 @@ import {
     ),
   ],
 
-  controllers: [
-    InventoryController,
-    InventoryExportService,
-  ],
+ controllers: [
+  InventoryController,
+],
 
-  providers: [
-    KiraService,
-    EasysoftService,
-    InventorySearchService,
-    InventorySyncService,
-    JwtAuthGuard,
-  ],
+providers: [
+  KiraService,
+  EasysoftService,
+  InventorySearchService,
+  InventorySyncService,
+  InventoryExportService,
+  JwtAuthGuard,
+],
 
   exports: [
     InventorySearchService,
