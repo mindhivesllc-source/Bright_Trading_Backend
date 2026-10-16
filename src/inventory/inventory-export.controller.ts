@@ -137,8 +137,8 @@ function csvCell(value: unknown): string {
 }
 
 @Injectable()
-export class CombinedInventoryExportService {
-  private readonly logger = new Logger(CombinedInventoryExportService.name);
+export class InventoryExportService {
+  private readonly logger = new Logger(InventoryExportService.name);
 
   constructor(
     private readonly kiraService: KiraService,

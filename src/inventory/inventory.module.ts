@@ -12,7 +12,7 @@ import {
 
 import { EasysoftService } from './easysoft.service';
 import { InventoryController } from './inventory.controller';
-import { InventoryExportController } from './inventory-export.controller';
+import { InventoryExportService } from './inventory-export.controller';
 import { InventorySearchService } from './inventory-search.service';
 import { InventorySyncService } from './inventory-sync.service';
 import { KiraService } from './kira.service';
@@ -68,7 +68,7 @@ import {
 
   controllers: [
     InventoryController,
-    InventoryExportController,
+    InventoryExportService,
   ],
 
   providers: [
