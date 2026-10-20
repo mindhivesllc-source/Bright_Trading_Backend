@@ -38,14 +38,18 @@ const jwtAudience =
   process.env.JWT_AUDIENCE ??
   'simple-auth-client';
 
-const corsOrigins =
-  (
-    process.env.CORS_ORIGINS ??
-    'http://localhost:5173'
-  )
-    .split(',')
-    .map((origin: string) => origin.trim())
-    .filter(Boolean);
+const defaultCorsOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://brightdia.in',
+  'https://www.brightdia.in',
+  'https://brightdia.com',
+  'https://www.brightdia.com',
+];
+
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((origin: string) => origin.trim()).filter(Boolean)
+  : defaultCorsOrigins;
 
 if (!mongoUri) {
   throw new Error(

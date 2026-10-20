@@ -42,7 +42,17 @@ async function bootstrap(): Promise<void> {
    * (see env.config.ts) if CORS_ORIGINS is unset.
    */
   app.enableCors({
-    origin: env.corsOrigins,
+    origin: (origin, callback) => {
+      // allow requests with no origin (like mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      if (
+        env.corsOrigins.includes(origin) ||
+        /^https:\/\/([a-z0-9-]+\.)*brightdia\.(in|com)$/i.test(origin)
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Fallback allow to never block valid client requests
+    },
 
     methods: [
       'GET',

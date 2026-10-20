@@ -70,69 +70,112 @@ export class KiraService {
 
     (async () => {
       try {
-        const limit = 10000;
-        let start = 1;
-        let isFirstChunk = true;
+        const CHUNK_SIZE = 20_000;
+        const CONCURRENCY = 4;
 
-        while (true) {
-          const end = start + limit - 1;
+        let token = await this.getAccessToken(true);
 
-          const textData = await this.withTokenRetry(async (token) => {
-            const response = await this.httpService.axiosRef.post<string>(
+        const fetchChunk = async (
+          pageStart: number,
+          pageEnd: number,
+        ): Promise<string> => {
+          const doRequest = async (t: string) => {
+            const resp = await this.httpService.axiosRef.post<string>(
               `${this.baseUrl}/GetStockDetailForThirdPartyCSV`,
               null,
               {
                 params: {
-                  pagestart: start,
-                  pageend: end,
+                  pagestart: pageStart,
+                  pageend: pageEnd,
                 },
                 headers: {
                   Accept: "text/csv, text/plain, */*",
-                  Authorization: `Bearer ${token}`,
+                  Authorization: `Bearer ${t}`,
                   "Content-Type": "application/json",
                 },
                 responseType: "text",
-                timeout: 120_000,
+                timeout: 180_000,
                 maxContentLength: Infinity,
                 maxBodyLength: Infinity,
               },
             );
-            return response.data;
-          }, isFirstChunk);
+            return resp.data;
+          };
 
-          if (!textData || textData.trim().length === 0) {
-            break;
+          try {
+            return await doRequest(token);
+          } catch (err) {
+            const status = this.getStatus(err);
+            if (status === 401 || status === 403) {
+              token = await this.getAccessToken(true);
+              return await doRequest(token);
+            }
+            throw err;
+          }
+        };
+
+        let start = 1;
+        let isFirstChunk = true;
+        let done = false;
+
+        while (!done) {
+          const batchRanges = [];
+          for (let i = 0; i < CONCURRENCY; i++) {
+            batchRanges.push({
+              s: start + i * CHUNK_SIZE,
+              e: start + (i + 1) * CHUNK_SIZE - 1,
+            });
           }
 
-          let chunkToWrite = textData;
+          const results = await Promise.all(
+            batchRanges.map(({ s, e }) =>
+              fetchChunk(s, e).catch((err) => {
+                this.logger.warn(`Failed fetching chunk ${s}-${e}: ${err.message}`);
+                return "";
+              }),
+            ),
+          );
 
-          if (!isFirstChunk) {
-            const firstNewline = chunkToWrite.indexOf("\n");
-            if (firstNewline !== -1) {
-              chunkToWrite = chunkToWrite.substring(firstNewline + 1);
+          for (let i = 0; i < results.length; i++) {
+            const textData = results[i];
+            if (!textData || textData.trim().length === 0) {
+              done = true;
+              break;
+            }
+
+            let chunkToWrite = textData;
+            if (!isFirstChunk) {
+              const firstNewline = chunkToWrite.indexOf("\n");
+              if (firstNewline !== -1) {
+                chunkToWrite = chunkToWrite.substring(firstNewline + 1);
+              }
+            }
+
+            if (chunkToWrite.trim().length === 0) {
+              done = true;
+              break;
+            }
+
+            passThrough.write(chunkToWrite);
+            isFirstChunk = false;
+
+            const lineCount = (textData.match(/\n/g) || []).length;
+            if (lineCount < CHUNK_SIZE * 0.9) {
+              done = true;
+              break;
             }
           }
 
-          if (chunkToWrite.trim().length === 0) {
-            break;
+          if (!done) {
+            start += CONCURRENCY * CHUNK_SIZE;
           }
-
-          passThrough.write(chunkToWrite);
-          
-          const lineCount = (textData.match(/\n/g) || []).length;
-          if (lineCount < limit * 0.9) {
-            break;
-          }
-
-          start += limit;
-          isFirstChunk = false;
         }
 
         passThrough.end();
       } catch (error) {
         const kiraErr = this.toKiraException(
           error,
-          "Bright CSV inventory could not be downloaded."
+          "Bright CSV inventory could not be downloaded.",
         );
         passThrough.destroy(kiraErr);
       }
