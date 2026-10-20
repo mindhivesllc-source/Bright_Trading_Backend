@@ -50,6 +50,59 @@ function parseCsv(input: string): string[][] {
   return rows;
 }
 
+// Mapping dictionary to align Easysoft API fields with Bright/Kira CSV column names
+const BRIGHT_COLUMN_SYNONYMS: Record<string, string[]> = {
+  StoneNo: ["Stock #", "Stock Number", "StoneNo", "Stone No"],
+  Status: ["Availability", "Status"],
+  Shp: ["Shape", "Shp"],
+  Cts: ["Weight", "Carat", "Cts", "Carats"],
+  Col: ["Color", "Col"],
+  Clr: ["Clarity", "Clr"],
+  Cut: ["Cut Grade", "Cut"],
+  Pol: ["Polish", "Pol"],
+  Sym: ["Symmetry", "Sym"],
+  Flr: ["Fluorescence Intensity", "Fluorescence", "Flr"],
+  Lab: ["Lab", "Laboratory"],
+  Rap: ["Rap", "Rapaport"],
+  Disc: ["Discount Percent", "Discount", "Disc"],
+  Price: ["Price", "Price/Ct"],
+  Amt: ["Total Price", "Amount", "Amt"],
+  Max: ["Measurements Length", "Length", "Max"],
+  Min: ["Measurements Width", "Width", "Min"],
+  Hgt: ["Measurements Depth", "Depth", "Height", "Hgt"],
+  Tbl: ["Table Percent", "Table", "Tbl"],
+  TD: ["Depth Percent", "Total Depth", "TD"],
+  Girdle: ["Girdle Thick", "Girdle Condition", "Girdle"],
+  GirdlePer: ["Girdle Percent", "GirdlePer"],
+  CA: ["Crown Angle", "CA"],
+  CH: ["Crown Height", "CH"],
+  PA: ["Pavilion Angle", "PA"],
+  PD: ["Pavilion Depth", "PD"],
+  Culet: ["Culet Size", "Culet Condition", "Culet"],
+  RepNo: ["Certificate #", "Certificate Number", "Report No", "RepNo"],
+  ReportComment: ["Cert Comment", "ReportComment", "Report Comment"],
+  certificate: ["Certificate Url", "Certificate Link", "certificate"],
+  video: ["Video Link", "video"],
+  daylight: ["Image Link", "daylight", "Image Link 1"],
+  LI: ["Laser Inscription", "LI"],
+  Remark: ["Member Comments", "Remark", "Comments"],
+};
+
+function getRecordValue(header: string, record: Record<string, unknown>): unknown {
+  if (record[header] !== undefined && record[header] !== null && record[header] !== "") {
+    return record[header];
+  }
+  const synonyms = BRIGHT_COLUMN_SYNONYMS[header];
+  if (synonyms) {
+    for (const key of synonyms) {
+      if (record[key] !== undefined && record[key] !== null && record[key] !== "") {
+        return record[key];
+      }
+    }
+  }
+  return "";
+}
+
 function csvCell(value: unknown): string {
   let text = value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
   const trimmed = text.trimStart();
@@ -138,7 +191,7 @@ export class InventoryExportService {
           }
         }
         for (const record of easysoftRecords) {
-          batch += headers.map((header) => csvCell(header === "Supplier" ? "Easysoft" : record[header])).join(",") + "\r\n";
+          batch += headers.map((header) => csvCell(header === "Supplier" ? "Easysoft" : getRecordValue(header, record))).join(",") + "\r\n";
           count++;
           if (batch.length >= batchSize) {
             yield batch;
