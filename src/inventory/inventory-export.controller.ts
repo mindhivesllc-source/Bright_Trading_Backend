@@ -1,80 +1,29 @@
-// import {
-//   Controller,
-//   ForbiddenException,
-//   Get,
-//   Req,
-//   StreamableFile,
-//   UseGuards,
-// } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  StreamableFile,
+  UseGuards,
+} from "@nestjs/common";
 
-// import type { Request } from "express";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
-// import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-// import { KiraService } from "./kira.service";
+@Controller("inventory")
+export class InventoryExportController {
+  constructor(private readonly exportService: InventoryExportService) {}
 
-// const ADMIN_EXPORT_EMAILS = [
-//   'administrator@brightdia.com',
-//   'romy@brightdia.in',
-// ].map((email) =>
-//   email.trim().toLowerCase(),
-// );
+  @Get("export")
+  @UseGuards(JwtAuthGuard)
+  async exportAllInventory(): Promise<StreamableFile> {
+    const csvStream = await this.exportService.downloadCombinedCsv();
 
-// type AuthenticatedRequest = Request & {
-//   user?: Record<string, unknown>;
-// };
+    const date = new Date().toISOString().slice(0, 10);
 
-// function getAuthenticatedEmail(user?: Record<string, unknown>): string {
-//   if (!user) {
-//     return "";
-//   }
-
-//   const candidates = [
-//     user.email,
-//     user.businessEmail,
-//     user.business_email,
-//     user.username,
-//     user.preferred_username,
-//     user.upn,
-//   ];
-
-//   for (const candidate of candidates) {
-//     if (typeof candidate === "string" && candidate.trim()) {
-//       return candidate.trim().toLowerCase();
-//     }
-//   }
-
-//   return "";
-// }
-
-// @Controller("inventory")
-// export class InventoryExportController {
-//   constructor(private readonly kiraService: KiraService) {}
-
-//   @Get("export")
-//   @UseGuards(JwtAuthGuard)
-//   async exportAllInventory(
-//     @Req() request: AuthenticatedRequest,
-//   ): Promise<StreamableFile> {
-//     const userEmail = getAuthenticatedEmail(request.user);
-
-//     if (!ADMIN_EXPORT_EMAILS.includes(userEmail)) {
-//       throw new ForbiddenException(
-//         "You do not have permission to export the full inventory.",
-//       );
-//     }
-
-//     const csvStream = await this.kiraService.downloadFullInventoryCsv();
-
-//     const date = new Date().toISOString().slice(0, 10);
-
-//     return new StreamableFile(csvStream, {
-//       type: "text/csv; charset=utf-8",
-//       disposition: `attachment; filename="bright-trading-full-inventory-${date}.csv"`,
-//     });
-//   }
-// }
-
-
+    return new StreamableFile(csvStream, {
+      type: "text/csv; charset=utf-8",
+      disposition: `attachment; filename="bright-trading-full-inventory-${date}.csv"`,
+    });
+  }
+}
 
 import { BadGatewayException, Injectable, Logger } from "@nestjs/common";
 import { Readable } from "node:stream";
@@ -254,7 +203,7 @@ const [brightCsv, easysoftRecords] = await Promise.all([
     const chunks: Buffer[] = [];
     try {
       for await (const chunk of stream) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));         
       }
     } catch (error) {
       this.logger.error("Bright CSV supplier stream failed", error instanceof Error ? error.stack : String(error));
