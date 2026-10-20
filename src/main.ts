@@ -57,6 +57,11 @@ async function bootstrap(): Promise<void> {
       'Authorization',
     ],
 
+    exposedHeaders: [
+      'Content-Disposition',
+      'Content-Length',
+    ],
+
     credentials: true,
   });
 
