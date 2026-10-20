@@ -1,32 +1,6 @@
-import {
-  Controller,
-  Get,
-  StreamableFile,
-  UseGuards,
-} from "@nestjs/common";
-
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-
-@Controller("inventory")
-export class InventoryExportController {
-  constructor(private readonly exportService: InventoryExportService) {}
-
-  @Get("export")
-  @UseGuards(JwtAuthGuard)
-  async exportAllInventory(): Promise<StreamableFile> {
-    const csvStream = await this.exportService.downloadCombinedCsv();
-
-    const date = new Date().toISOString().slice(0, 10);
-
-    return new StreamableFile(csvStream, {
-      type: "text/csv; charset=utf-8",
-      disposition: `attachment; filename="bright-trading-full-inventory-${date}.csv"`,
-    });
-  }
-}
-
-import { BadGatewayException, Injectable, Logger } from "@nestjs/common";
+import { BadGatewayException, Controller, Get, Injectable, Logger, StreamableFile, UseGuards } from "@nestjs/common";
 import { Readable } from "node:stream";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { KiraService } from "./kira.service";
 import { EasysoftService } from "./easysoft.service";
 
@@ -85,6 +59,10 @@ function csvCell(value: unknown): string {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
+// =====================================================
+// SERVICE  (must be declared BEFORE the controller so
+// that TypeScript decorator metadata can reference it)
+// =====================================================
 @Injectable()
 export class InventoryExportService {
   private readonly logger = new Logger(InventoryExportService.name);
@@ -98,40 +76,29 @@ export class InventoryExportService {
     const startedAt = Date.now();
     this.logger.log("Combined CSV export: requesting Bright and Easysoft inventories...");
 
-    // Keep upstream failures before the HTTP 200 response.
-    
-const [brightCsv, easysoftRecords] = await Promise.all([
-  (async () => {
-    const start = Date.now();
+    const [brightCsv, easysoftRecords] = await Promise.all([
+      (async () => {
+        const start = Date.now();
+        try {
+          return await this.readBrightCsv();
+        } finally {
+          this.logger.log(
+            `Bright inventory fetch took ${((Date.now() - start) / 1000).toFixed(2)} seconds`,
+          );
+        }
+      })(),
 
-    try {
-      return await this.readBrightCsv();
-    } finally {
-      this.logger.log(
-        `Bright inventory fetch took ${(
-          (Date.now() - start) /
-          1000
-        ).toFixed(2)} seconds`,
-      );
-    }
-  })(),
-
-  (async () => {
-    const start = Date.now();
-
-    try {
-      return await this.easysoftService.getDiamondList();
-    } finally {
-      this.logger.log(
-        `Easysoft inventory fetch took ${(
-          (Date.now() - start) /
-          1000
-        ).toFixed(2)} seconds`,
-      );
-    }
-  })(),
-]);
-
+      (async () => {
+        const start = Date.now();
+        try {
+          return await this.easysoftService.getDiamondList();
+        } finally {
+          this.logger.log(
+            `Easysoft inventory fetch took ${((Date.now() - start) / 1000).toFixed(2)} seconds`,
+          );
+        }
+      })(),
+    ]);
 
     const parsed = parseCsv(brightCsv);
     if (!parsed.length || !parsed[0].some(Boolean)) {
@@ -152,9 +119,7 @@ const [brightCsv, easysoftRecords] = await Promise.all([
     const easysoftHeaders = [...new Set(easysoftRecords.flatMap((record) => Object.keys(record)))];
     const headers = ["Supplier", ...new Set([...safeBrightHeaders, ...easysoftHeaders].filter((h) => h !== "Supplier"))];
 
-    // Batch rows before yielding. Sending one tiny chunk per diamond makes
-    // large HTTP downloads unnecessarily slow.
-    const batchSize = 256 * 1024; // approx 256 KiB per emitted chunk
+    const batchSize = 256 * 1024;
     const serviceLogger = this.logger;
     function* output(): Generator<string> {
       let batch = "\uFEFF" + headers.map(csvCell).join(",") + "\r\n";
@@ -203,12 +168,34 @@ const [brightCsv, easysoftRecords] = await Promise.all([
     const chunks: Buffer[] = [];
     try {
       for await (const chunk of stream) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));         
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       }
     } catch (error) {
       this.logger.error("Bright CSV supplier stream failed", error instanceof Error ? error.stack : String(error));
       throw new BadGatewayException("Bright inventory download failed; combined export cancelled.");
     }
     return Buffer.concat(chunks).toString("utf8");
+  }
+}
+
+// =====================================================
+// CONTROLLER  (declared AFTER the service so metadata
+// can safely reference InventoryExportService)
+// =====================================================
+@Controller("inventory")
+export class InventoryExportController {
+  constructor(private readonly exportService: InventoryExportService) {}
+
+  @Get("export")
+  @UseGuards(JwtAuthGuard)
+  async exportAllInventory(): Promise<StreamableFile> {
+    const csvStream = await this.exportService.downloadCombinedCsv();
+
+    const date = new Date().toISOString().slice(0, 10);
+
+    return new StreamableFile(csvStream, {
+      type: "text/csv; charset=utf-8",
+      disposition: `attachment; filename="bright-trading-full-inventory-${date}.csv"`,
+    });
   }
 }
