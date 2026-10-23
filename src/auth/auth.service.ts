@@ -683,6 +683,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 
@@ -703,9 +704,16 @@ import {
 import { env } from '../config/env.config';
 
 import {
+  PostHogService,
+} from '../posthog/posthog.service';
+
+import {
   UserDocument,
 } from '../users/schemas/user.schema';
 
+import { CartService } from '../cart/cart.service';
+import { DevicesService } from '../devices/devices.service';
+import { SavedService } from '../saved/saved.service';
 import { UsersService } from '../users/users.service';
 
 import { LoginDto } from './dto/login.dto';
@@ -743,6 +751,10 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly cartService: CartService,
+    private readonly devicesService: DevicesService,
+    private readonly savedService: SavedService,
+    private readonly postHogService: PostHogService,
   ) {}
 
   // Existing signup functionality
@@ -1081,6 +1093,25 @@ export class AuthService {
     };
   }
 
+  // Permanently deletes the account and all data stored for it.
+  // Dependent data goes first so a failed request can be retried:
+  // the user document is only removed once everything else is gone.
+  async deleteAccount(userId: string): Promise<void> {
+    if (!(await this.usersService.existsById(userId))) {
+      throw new NotFoundException('User not found.');
+    }
+
+    await Promise.all([
+      this.cartService.deleteAllForUser(userId),
+      this.devicesService.deleteAllForUser(userId),
+      this.savedService.deleteAllForUser(userId),
+    ]);
+
+    if (!(await this.usersService.deleteById(userId))) {
+      throw new NotFoundException('User not found.');
+    }
+  }
+
   // Hash sensitive reset values before MongoDB storage.
   private hashResetValue(
     purpose: 'otp' | 'token',
@@ -1111,6 +1142,16 @@ export class AuthService {
 
     const accessToken = await this.jwtService
       .signAsync(payload);
+
+    // Email and name are person properties; the stable MongoDB id is the
+    // distinct id used by request-scoped PostHog context.
+    this.postHogService.client?.identify({
+      distinctId: payload.sub,
+      properties: {
+        email: user.email,
+        name: user.name,
+      },
+    });
 
     return {
       message: 'Authentication successful.',

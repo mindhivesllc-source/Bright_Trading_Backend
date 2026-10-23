@@ -172,6 +172,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -296,6 +297,25 @@ export class AuthController {
     }
 
     return this.authService.getCurrentUser(
+      request.user.sub,
+    );
+  }
+
+  // Account deletion from the mobile app. Removes the user and
+  // their cart, devices, saved stones and saved searches.
+  @Delete('me')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteMe(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    if (!request.user) {
+      throw new UnauthorizedException(
+        'Authentication required.',
+      );
+    }
+
+    await this.authService.deleteAccount(
       request.user.sub,
     );
   }
