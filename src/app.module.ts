@@ -27,6 +27,10 @@ import {
   InventoryModule,
 } from './inventory/inventory.module';
 
+import {
+  EnquiriesModule,
+} from './enquiries/enquiries.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -48,6 +52,8 @@ import {
     }),
 
     InventoryModule,
+
+    EnquiriesModule,
   ],
 
   controllers: [
