@@ -704,10 +704,6 @@ import {
 import { env } from '../config/env.config';
 
 import {
-  PostHogService,
-} from '../posthog/posthog.service';
-
-import {
   UserDocument,
 } from '../users/schemas/user.schema';
 
@@ -754,7 +750,6 @@ export class AuthService {
     private readonly cartService: CartService,
     private readonly devicesService: DevicesService,
     private readonly savedService: SavedService,
-    private readonly postHogService: PostHogService,
   ) {}
 
   // Existing signup functionality
@@ -1142,16 +1137,6 @@ export class AuthService {
 
     const accessToken = await this.jwtService
       .signAsync(payload);
-
-    // Email and name are person properties; the stable MongoDB id is the
-    // distinct id used by request-scoped PostHog context.
-    this.postHogService.client?.identify({
-      distinctId: payload.sub,
-      properties: {
-        email: user.email,
-        name: user.name,
-      },
-    });
 
     return {
       message: 'Authentication successful.',
