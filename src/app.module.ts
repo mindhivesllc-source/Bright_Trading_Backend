@@ -31,6 +31,26 @@ import {
   EnquiriesModule,
 } from './enquiries/enquiries.module';
 
+import {
+  ScheduleModule,
+} from '@nestjs/schedule';
+
+import {
+  CartModule,
+} from './cart/cart.module';
+
+import {
+  DevicesModule,
+} from './devices/devices.module';
+
+import {
+  SavedModule,
+} from './saved/saved.module';
+
+import {
+  NotificationsModule,
+} from './notifications/notifications.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -54,6 +74,17 @@ import {
     InventoryModule,
 
     EnquiriesModule,
+
+    // Cron jobs for push notifications (see NotificationsScheduler).
+    ScheduleModule.forRoot(),
+
+    CartModule,
+
+    DevicesModule,
+
+    SavedModule,
+
+    NotificationsModule,
   ],
 
   controllers: [
