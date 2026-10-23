@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node -r ./dist/tracing.js dist/main.js",
     "start:prod": "node -r ./dist/tracing.js dist/main.js",
-    "start:dev": "ts-node -r ./src/tracing.ts src/main.ts"
+    "start:dev": "ts-node -r ./src/tracing.ts src/main.ts",
+    "test:e2e": "tsc --noEmit -p test/tsconfig.json && TS_NODE_PROJECT=test/tsconfig.json TS_NODE_TRANSPILE_ONLY=true node -r ts-node/register test/engagement.e2e-spec.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",
