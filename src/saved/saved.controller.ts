@@ -16,6 +16,7 @@ import { ActiveUserGuard } from '../auth/guards/active-user.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { getUserId } from '../common/utils/current-user.util';
+import { PostHogService } from '../posthog/posthog.service';
 import { CreateSavedSearchDto } from './dto/create-saved-search.dto';
 import { CreateSavedStoneDto } from './dto/create-saved-stone.dto';
 import { SavedService } from './saved.service';
@@ -23,7 +24,10 @@ import { SavedService } from './saved.service';
 @Controller('saved')
 @UseGuards(JwtAuthGuard, ActiveUserGuard)
 export class SavedController {
-  constructor(private readonly savedService: SavedService) {}
+  constructor(
+    private readonly savedService: SavedService,
+    private readonly postHogService: PostHogService,
+  ) {}
 
   @Get('stones')
   listStones(@Req() request: AuthenticatedRequest) {
@@ -34,11 +38,20 @@ export class SavedController {
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  saveStone(
+  async saveStone(
     @Req() request: AuthenticatedRequest,
     @Body() dto: CreateSavedStoneDto,
   ) {
-    return this.savedService.saveStone(getUserId(request), dto);
+    const stone = await this.savedService.saveStone(
+      getUserId(request),
+      dto,
+    );
+
+    this.postHogService.client?.capture({
+      event: 'saved_stone_created',
+    });
+
+    return stone;
   }
 
   @Delete('stones/:stockId')
@@ -48,6 +61,10 @@ export class SavedController {
     @Param('stockId') stockId: string,
   ): Promise<void> {
     await this.savedService.removeStone(getUserId(request), stockId);
+
+    this.postHogService.client?.capture({
+      event: 'saved_stone_deleted',
+    });
   }
 
   @Get('searches')
@@ -59,11 +76,20 @@ export class SavedController {
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  createSearch(
+  async createSearch(
     @Req() request: AuthenticatedRequest,
     @Body() dto: CreateSavedSearchDto,
   ) {
-    return this.savedService.createSearch(getUserId(request), dto);
+    const search = await this.savedService.createSearch(
+      getUserId(request),
+      dto,
+    );
+
+    this.postHogService.client?.capture({
+      event: 'saved_search_created',
+    });
+
+    return search;
   }
 
   @Delete('searches/:id')
@@ -73,5 +99,9 @@ export class SavedController {
     @Param('id') id: string,
   ): Promise<void> {
     await this.savedService.removeSearch(getUserId(request), id);
+
+    this.postHogService.client?.capture({
+      event: 'saved_search_deleted',
+    });
   }
 }

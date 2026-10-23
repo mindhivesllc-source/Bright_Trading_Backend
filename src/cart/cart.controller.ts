@@ -15,13 +15,17 @@ import { ActiveUserGuard } from '../auth/guards/active-user.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { getUserId } from '../common/utils/current-user.util';
+import { PostHogService } from '../posthog/posthog.service';
 import { CartService } from './cart.service';
 import { PutCartDto } from './dto/put-cart.dto';
 
 @Controller('cart')
 @UseGuards(JwtAuthGuard, ActiveUserGuard)
 export class CartController {
-  constructor(private readonly cartService: CartService) {}
+  constructor(
+    private readonly cartService: CartService,
+    private readonly postHogService: PostHogService,
+  ) {}
 
   @Get()
   get(@Req() request: AuthenticatedRequest) {
@@ -32,16 +36,32 @@ export class CartController {
   @Put()
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
-  replace(
+  async replace(
     @Req() request: AuthenticatedRequest,
     @Body() dto: PutCartDto,
   ) {
-    return this.cartService.replace(getUserId(request), dto.items);
+    const cart = await this.cartService.replace(
+      getUserId(request),
+      dto.items,
+    );
+
+    this.postHogService.client?.capture({
+      event: 'cart_replaced',
+      properties: {
+        item_count: dto.items.length,
+      },
+    });
+
+    return cart;
   }
 
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
   async clear(@Req() request: AuthenticatedRequest): Promise<void> {
     await this.cartService.clear(getUserId(request));
+
+    this.postHogService.client?.capture({
+      event: 'cart_cleared',
+    });
   }
 }

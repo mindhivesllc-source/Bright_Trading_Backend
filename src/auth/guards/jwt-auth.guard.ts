@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
+import { PostHogService } from '../../posthog/posthog.service';
+
 interface AuthenticatedRequest extends Request {
   user?: Record<string, unknown>;
 }
@@ -18,6 +20,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly postHogService: PostHogService,
   ) {}
 
   async canActivate(
@@ -66,7 +69,25 @@ export class JwtAuthGuard implements CanActivate {
           : {}),
       });
 
+      if (
+        typeof payload.sub !== 'string' ||
+        !payload.sub
+      ) {
+        throw new UnauthorizedException(
+          'Authentication token is invalid or expired.',
+        );
+      }
+
       request.user = payload;
+
+      this.postHogService.client?.enterContext(
+        {
+          distinctId: payload.sub,
+        },
+        {
+          fresh: true,
+        },
+      );
 
       return true;
     } catch {

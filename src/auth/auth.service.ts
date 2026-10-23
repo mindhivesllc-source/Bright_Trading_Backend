@@ -704,6 +704,10 @@ import {
 import { env } from '../config/env.config';
 
 import {
+  PostHogService,
+} from '../posthog/posthog.service';
+
+import {
   UserDocument,
 } from '../users/schemas/user.schema';
 
@@ -750,6 +754,7 @@ export class AuthService {
     private readonly cartService: CartService,
     private readonly devicesService: DevicesService,
     private readonly savedService: SavedService,
+    private readonly postHogService: PostHogService,
   ) {}
 
   // Existing signup functionality
@@ -791,7 +796,14 @@ export class AuthService {
         zipCode: signupDto.zipCode?.trim() || '',
       });
 
-      return this.createAuthResponse(user);
+      const response = await this.createAuthResponse(user);
+
+      this.postHogService.client?.capture({
+        distinctId: user._id.toString(),
+        event: 'account_created',
+      });
+
+      return response;
     } catch (error) {
       if (this.isMongoDuplicateKeyError(error)) {
         throw new ConflictException(
@@ -835,7 +847,14 @@ export class AuthService {
       );
     }
 
-    return this.createAuthResponse(user);
+    const response = await this.createAuthResponse(user);
+
+    this.postHogService.client?.capture({
+      distinctId: user._id.toString(),
+      event: 'user_logged_in',
+    });
+
+    return response;
   }
 
   // STEP 1: Generate and email OTP
@@ -1105,6 +1124,10 @@ export class AuthService {
     if (!(await this.usersService.deleteById(userId))) {
       throw new NotFoundException('User not found.');
     }
+
+    this.postHogService.client?.capture({
+      event: 'account_deleted',
+    });
   }
 
   // Hash sensitive reset values before MongoDB storage.
@@ -1137,6 +1160,14 @@ export class AuthService {
 
     const accessToken = await this.jwtService
       .signAsync(payload);
+
+    this.postHogService.client?.identify({
+      distinctId: payload.sub,
+      properties: {
+        email: user.email,
+        name: user.name,
+      },
+    });
 
     return {
       message: 'Authentication successful.',

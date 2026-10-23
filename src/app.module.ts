@@ -51,6 +51,10 @@ import {
   NotificationsModule,
 } from './notifications/notifications.module';
 
+import {
+  PostHogModule,
+} from './posthog/posthog.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -85,6 +89,8 @@ import {
     SavedModule,
 
     NotificationsModule,
+
+    PostHogModule,
   ],
 
   controllers: [

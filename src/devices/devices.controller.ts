@@ -15,23 +15,36 @@ import { ActiveUserGuard } from '../auth/guards/active-user.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '../auth/interfaces/authenticated-request.interface';
 import { getUserId } from '../common/utils/current-user.util';
+import { PostHogService } from '../posthog/posthog.service';
 import { DevicesService } from './devices.service';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 
 @Controller('devices')
 @UseGuards(JwtAuthGuard, ActiveUserGuard)
 export class DevicesController {
-  constructor(private readonly devicesService: DevicesService) {}
+  constructor(
+    private readonly devicesService: DevicesService,
+    private readonly postHogService: PostHogService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  register(
+  async register(
     @Req() request: AuthenticatedRequest,
     @Body() dto: RegisterDeviceDto,
   ) {
-    return this.devicesService.register(getUserId(request), dto);
+    const device = await this.devicesService.register(
+      getUserId(request),
+      dto,
+    );
+
+    this.postHogService.client?.capture({
+      event: 'device_registered',
+    });
+
+    return device;
   }
 
   // Called by the app on logout. The token must be URL-encoded.
@@ -42,5 +55,9 @@ export class DevicesController {
     @Param('token') token: string,
   ): Promise<void> {
     await this.devicesService.unregister(getUserId(request), token);
+
+    this.postHogService.client?.capture({
+      event: 'device_unregistered',
+    });
   }
 }

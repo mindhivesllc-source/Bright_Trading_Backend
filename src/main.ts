@@ -1,7 +1,10 @@
 import 'reflect-metadata';
 
 import { ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import {
+  HttpAdapterHost,
+  NestFactory,
+} from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 import { setServers } from 'node:dns';
@@ -10,6 +13,8 @@ import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { env } from './config/env.config';
+import { PostHogExceptionFilter } from './posthog/posthog-exception.filter';
+import { PostHogService } from './posthog/posthog.service';
 
 /*
  * Forces Node DNS queries through public DNS.
@@ -74,6 +79,13 @@ async function bootstrap(): Promise<void> {
 
     credentials: true,
   });
+
+  app.useGlobalFilters(
+    new PostHogExceptionFilter(
+      app.get(PostHogService),
+      app.get(HttpAdapterHost),
+    ),
+  );
 
   /*
    * DTO validation
