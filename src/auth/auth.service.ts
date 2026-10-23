@@ -1161,12 +1161,9 @@ export class AuthService {
     const accessToken = await this.jwtService
       .signAsync(payload);
 
+    // Account id only: no email or name leaves the server for analytics.
     this.postHogService.client?.identify({
       distinctId: payload.sub,
-      properties: {
-        email: user.email,
-        name: user.name,
-      },
     });
 
     return {

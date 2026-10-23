@@ -35,6 +35,8 @@ export class PostHogService implements OnModuleDestroy {
       {
         host,
         enableExceptionAutocapture: true,
+        // No IP-derived location on events.
+        disableGeoip: true,
       },
     );
   }

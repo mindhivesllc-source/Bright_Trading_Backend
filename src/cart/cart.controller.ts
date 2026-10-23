@@ -45,13 +45,6 @@ export class CartController {
       dto.items,
     );
 
-    this.postHogService.client?.capture({
-      event: 'cart_replaced',
-      properties: {
-        item_count: dto.items.length,
-      },
-    });
-
     return cart;
   }
 
@@ -59,9 +52,5 @@ export class CartController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async clear(@Req() request: AuthenticatedRequest): Promise<void> {
     await this.cartService.clear(getUserId(request));
-
-    this.postHogService.client?.capture({
-      event: 'cart_cleared',
-    });
   }
 }
