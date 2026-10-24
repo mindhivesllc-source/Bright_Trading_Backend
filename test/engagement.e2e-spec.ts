@@ -1,6 +1,6 @@
 /*
  * End-to-end and unit tests for cart sync, devices, saved items,
- * account deletion and push notifications.
+ * account deletion, refresh tokens and push notifications.
  *
  * Boots the real AppModule against an in-memory MongoDB. All three
  * connections point at the same memory server with different DB names.
@@ -10,6 +10,7 @@
 import 'reflect-metadata';
 
 import assert from 'node:assert/strict';
+import { createHash, createHmac } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { ValidationPipe } from '@nestjs/common';
@@ -35,6 +36,8 @@ let mods: {
   scheduler: typeof import('../src/notifications/notifications.scheduler');
   quiet: typeof import('../src/notifications/quiet-hours');
   expo: typeof import('../src/notifications/expo-push.service');
+  RefreshToken: typeof import('../src/auth/schemas/refresh-token.schema');
+  User: typeof import('../src/users/schemas/user.schema');
 };
 
 const realFetch = globalThis.fetch;
@@ -101,15 +104,21 @@ async function api(
 
 let signupCounter = 0;
 
-async function signup(): Promise<{ token: string; userId: string }> {
+async function signup(): Promise<{
+  token: string;
+  userId: string;
+  refreshToken: string;
+  email: string;
+}> {
   signupCounter += 1;
+  const email = `user${signupCounter}-${Date.now()}@example.com`;
 
   const response = await api('POST', '/auth/signup', {
     body: {
       firstName: 'Test',
       lastName: 'User',
       name: 'Test User',
-      email: `user${signupCounter}-${Date.now()}@example.com`,
+      email,
       password: 'password123',
       companyName: 'Bright Test',
       salesPerson: 'Sales',
@@ -122,6 +131,8 @@ async function signup(): Promise<{ token: string; userId: string }> {
   return {
     token: response.body.accessToken,
     userId: response.body.user.id,
+    refreshToken: response.body.refreshToken,
+    email,
   };
 }
 
@@ -160,6 +171,8 @@ before(async () => {
     scheduler: await import('../src/notifications/notifications.scheduler'),
     quiet: await import('../src/notifications/quiet-hours'),
     expo: await import('../src/notifications/expo-push.service'),
+    RefreshToken: await import('../src/auth/schemas/refresh-token.schema'),
+    User: await import('../src/users/schemas/user.schema'),
   };
 
   app = await NestFactory.create(AppModule, { logger: ['error'] });
@@ -465,6 +478,7 @@ describe('DELETE /auth/me', () => {
       mods.Device.Device.name,
       mods.SavedStone.SavedStone.name,
       mods.SavedSearch.SavedSearch.name,
+      mods.RefreshToken.RefreshToken.name,
     ]) {
       assert.equal(await model(name).countDocuments({ userId: owner }), 0, name);
     }
@@ -476,6 +490,249 @@ describe('DELETE /auth/me', () => {
       401,
     );
     assert.equal((await api('GET', '/auth/me', { token })).status, 401);
+  });
+});
+
+describe('refresh tokens', () => {
+  const SESSION_EXPIRED = 'Session expired. Please log in again.';
+
+  function tokens() {
+    return model<{
+      userId: Types.ObjectId;
+      tokenHash: string;
+      familyId: string;
+      expiresAt: Date;
+      revokedAt?: Date | null;
+      replacedByHash?: string | null;
+      userAgent?: string;
+      platform?: string;
+    }>(mods.RefreshToken.RefreshToken.name);
+  }
+
+  function refresh(refreshToken: unknown) {
+    return api('POST', '/auth/refresh', { body: { refreshToken } });
+  }
+
+  it('adds a refresh token to login and signup without changing the rest', async () => {
+    const created = await signup();
+    assert.match(created.refreshToken, /^[A-Za-z0-9_-]{43}$/);
+
+    const login = await api('POST', '/auth/login', {
+      body: { email: created.email, password: 'password123' },
+    });
+
+    assert.equal(login.status, 200);
+    assert.deepEqual(Object.keys(login.body).sort(), [
+      'accessToken',
+      'expiresIn',
+      'message',
+      'refreshToken',
+      'refreshTokenExpiresAt',
+      'tokenType',
+      'user',
+    ]);
+    assert.equal(login.body.message, 'Authentication successful.');
+    assert.equal(login.body.tokenType, 'Bearer');
+    assert.equal(login.body.expiresIn, '1h');
+
+    const days =
+      (Date.parse(login.body.refreshTokenExpiresAt) - Date.now()) /
+      (24 * 60 * 60 * 1000);
+    assert.ok(days > 59.9 && days <= 60, String(days));
+
+    // Only the hash is stored, and login starts a new family.
+    const docs = await tokens()
+      .find({ userId: new Types.ObjectId(created.userId) })
+      .lean();
+    assert.equal(docs.length, 2);
+    assert.notEqual(docs[0].familyId, docs[1].familyId);
+    for (const doc of docs) {
+      assert.match(doc.tokenHash, /^[a-f0-9]{64}$/);
+      assert.notEqual(doc.tokenHash, login.body.refreshToken);
+    }
+  });
+
+  it('rotates, allows a duplicate within the grace window and detects reuse after it', async () => {
+    const { refreshToken: first, userId } = await signup();
+
+    const rotated = await api('POST', '/auth/refresh', {
+      body: { refreshToken: first },
+    });
+    assert.equal(rotated.status, 200, JSON.stringify(rotated.body));
+    assert.deepEqual(Object.keys(rotated.body).sort(), [
+      'accessToken',
+      'refreshToken',
+      'refreshTokenExpiresAt',
+      'tokenType',
+      'user',
+    ]);
+    assert.equal(rotated.body.tokenType, 'Bearer');
+    assert.equal(rotated.body.user.id, userId);
+    assert.notEqual(rotated.body.refreshToken, first);
+
+    const me = await api('GET', '/auth/me', { token: rotated.body.accessToken });
+    assert.equal(me.status, 200);
+    assert.equal(me.body.user.id, userId);
+
+    // A second app process presenting the old token at the same time.
+    const duplicate = await refresh(first);
+    assert.equal(duplicate.status, 409);
+    assert.equal(duplicate.body.message, 'Refresh already in progress.');
+
+    const second = await refresh(rotated.body.refreshToken);
+    assert.equal(second.status, 200);
+
+    // Past the grace window the old token is a replay: the family dies.
+    await tokens().updateOne(
+      { tokenHash: createHash('sha256').update(first).digest('hex') },
+      { $set: { revokedAt: new Date(Date.now() - 31_000) } },
+    );
+
+    const replay = await refresh(first);
+    assert.equal(replay.status, 401);
+    assert.equal(replay.body.message, SESSION_EXPIRED);
+
+    assert.equal((await refresh(second.body.refreshToken)).status, 401);
+    assert.equal(
+      await tokens().countDocuments({
+        userId: new Types.ObjectId(userId),
+        revokedAt: null,
+      }),
+      0,
+    );
+  });
+
+  it('lets exactly one of two concurrent refreshes win', async () => {
+    const { refreshToken } = await signup();
+
+    const statuses = (
+      await Promise.all([refresh(refreshToken), refresh(refreshToken)])
+    )
+      .map((response) => response.status)
+      .sort();
+
+    assert.deepEqual(statuses, [200, 409]);
+  });
+
+  it('revokes the session on logout and always answers 204', async () => {
+    const { refreshToken } = await signup();
+    const rotated = await refresh(refreshToken);
+
+    const logout = await api('POST', '/auth/logout', {
+      body: { refreshToken: rotated.body.refreshToken },
+    });
+    assert.equal(logout.status, 204);
+
+    const after = await refresh(rotated.body.refreshToken);
+    assert.equal(after.status, 401);
+    assert.equal(after.body.message, SESSION_EXPIRED);
+    assert.equal((await refresh(refreshToken)).status, 401);
+
+    assert.equal(
+      (await api('POST', '/auth/logout', { body: { refreshToken: 'unknown' } })).status,
+      204,
+    );
+    assert.equal((await api('POST', '/auth/logout', { body: {} })).status, 204);
+    assert.equal(
+      (await api('POST', '/auth/logout', { body: { refreshToken: 42 } })).status,
+      204,
+    );
+  });
+
+  it('rejects unknown, malformed and expired tokens', async () => {
+    const unknown = await refresh('not-a-real-token');
+    assert.equal(unknown.status, 401);
+    assert.equal(unknown.body.message, SESSION_EXPIRED);
+
+    assert.equal((await refresh(undefined)).status, 400);
+
+    const { refreshToken, userId } = await signup();
+    await tokens().updateMany(
+      { userId: new Types.ObjectId(userId) },
+      { $set: { expiresAt: new Date(Date.now() - 1000) } },
+    );
+
+    const expired = await refresh(refreshToken);
+    assert.equal(expired.status, 401);
+    assert.equal(expired.body.message, SESSION_EXPIRED);
+  });
+
+  it('answers User no longer exists. when the account is gone', async () => {
+    const { refreshToken, userId } = await signup();
+    await model(mods.User.User.name).deleteOne({ _id: new Types.ObjectId(userId) });
+
+    const response = await refresh(refreshToken);
+    assert.equal(response.status, 401);
+    assert.equal(response.body.message, 'User no longer exists.');
+    assert.equal(
+      await tokens().countDocuments({ userId: new Types.ObjectId(userId) }),
+      0,
+    );
+  });
+
+  it('revokes every session when the password is reset', async () => {
+    const { refreshToken, email } = await signup();
+    const login = await api('POST', '/auth/login', {
+      body: { email, password: 'password123' },
+    });
+
+    // Skips the emailed OTP step by planting a reset token directly.
+    const resetToken = 'a'.repeat(64);
+    const resetTokenHash = createHmac('sha256', process.env.JWT_SECRET!)
+      .update(`password-reset:token:${resetToken}`)
+      .digest('hex');
+    await model(mods.User.User.name).updateOne(
+      { email },
+      {
+        $set: {
+          resetTokenHash,
+          resetTokenExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    );
+
+    const reset = await api('POST', '/auth/reset-password', {
+      body: {
+        resetToken,
+        newPassword: 'newpassword456',
+        confirmPassword: 'newpassword456',
+      },
+    });
+    assert.equal(reset.status, 200, JSON.stringify(reset.body));
+
+    assert.equal((await refresh(refreshToken)).status, 401);
+    assert.equal((await refresh(login.body.refreshToken)).status, 401);
+  });
+
+  it('records the user agent and app platform', async () => {
+    const { email, userId } = await signup();
+
+    const response = await realFetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': `BrightTrading/1.0 ${'x'.repeat(300)}`,
+        'X-App-Platform': 'iOS',
+      },
+      body: JSON.stringify({ email, password: 'password123' }),
+    });
+    assert.equal(response.status, 200);
+
+    const doc = await tokens()
+      .findOne({ userId: new Types.ObjectId(userId), platform: 'ios' })
+      .lean();
+    assert.ok(doc);
+    assert.equal(doc.userAgent?.length, 200);
+  });
+
+  it('limits POST /auth/refresh to 30 per minute', async () => {
+    const statuses: number[] = [];
+
+    for (let i = 0; i < 32; i += 1) {
+      statuses.push((await refresh(`unknown-${i}`)).status);
+    }
+
+    assert.ok(statuses.includes(429), statuses.join(','));
   });
 });
 
