@@ -38,6 +38,11 @@ const jwtAudience =
   process.env.JWT_AUDIENCE ??
   'simple-auth-client';
 
+// Refresh tokens are opaque and stored hashed; each rotation issues a
+// new token valid for this many days.
+const refreshTokenTtlDays =
+  Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 60);
+
 const defaultCorsOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
@@ -67,6 +72,15 @@ if (
 }
 
 if (
+  !Number.isFinite(refreshTokenTtlDays) ||
+  refreshTokenTtlDays <= 0
+) {
+  throw new Error(
+    'REFRESH_TOKEN_TTL_DAYS must be a positive number',
+  );
+}
+
+if (
   !Number.isInteger(port) ||
   port < 1 ||
   port > 65_535
@@ -86,5 +100,6 @@ export const env = {
   jwtExpiresIn,
   jwtIssuer,
   jwtAudience,
+  refreshTokenTtlDays,
   corsOrigins,
 } as const;
