@@ -469,13 +469,14 @@ export class UsersService {
   }
 
   // The reset token is consumed in the same database
-  // operation as the password change.
+  // operation as the password change. Returns the user's id
+  // when the password was changed, otherwise null.
   async updatePasswordWithResetToken(
     resetTokenHash: string,
     passwordHash: string,
-  ): Promise<boolean> {
-    const result = await this.userModel
-      .updateOne(
+  ): Promise<string | null> {
+    const updated = await this.userModel
+      .findOneAndUpdate(
         {
           resetTokenHash,
           resetTokenExpiresAt: {
@@ -494,9 +495,10 @@ export class UsersService {
             resetOtpExpiresAt: '',
           },
         },
+        { projection: { _id: 1 } },
       )
       .exec();
 
-    return result.modifiedCount > 0;
+    return updated ? updated._id.toString() : null;
   }
 }
