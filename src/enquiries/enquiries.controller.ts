@@ -19,7 +19,7 @@ export class EnquiriesController {
     private readonly postHogService: PostHogService,
   ) {}
 
-  // Quote and diamond sourcing requests from the mobile app.
+  // Quote, diamond sourcing and contact requests from the mobile app and website.
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @UseGuards(ThrottlerGuard)

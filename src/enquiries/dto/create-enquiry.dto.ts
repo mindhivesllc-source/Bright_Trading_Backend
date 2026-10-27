@@ -8,8 +8,13 @@ import {
 } from 'class-validator';
 
 export class CreateEnquiryDto {
-  @IsIn(['quote', 'sourcing'])
-  type!: 'quote' | 'sourcing';
+  @IsIn(['quote', 'sourcing', 'contact'])
+  type!: 'quote' | 'sourcing' | 'contact';
+
+  // Defaults to 'app' so older app builds keep working.
+  @IsOptional()
+  @IsIn(['app', 'website'])
+  source?: 'app' | 'website';
 
   @IsString()
   @MinLength(1)

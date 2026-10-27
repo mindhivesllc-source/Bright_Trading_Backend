@@ -2,46 +2,44 @@ import {
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
 
+import {
+  isMailConfigured,
+  mailAccount,
+  sendMail,
+} from '../common/utils/mail.util';
 import { CreateEnquiryDto } from './dto/create-enquiry.dto';
 
 const SUBJECTS: Record<CreateEnquiryDto['type'], string> = {
-  quote: 'Quote request (mobile app)',
-  sourcing: 'Diamond sourcing request (mobile app)',
+  quote: 'Quote request',
+  sourcing: 'Diamond sourcing request',
+  contact: 'Trade enquiry',
+};
+
+const SOURCES: Record<NonNullable<CreateEnquiryDto['source']>, string> = {
+  app: 'mobile app',
+  website: 'website',
 };
 
 @Injectable()
 export class EnquiriesService {
   async send(dto: CreateEnquiryDto) {
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPassword = process.env.SMTP_PASSWORD;
+    // Sales inbox. Falls back to the SMTP account itself.
+    const to = process.env.ENQUIRY_TO || mailAccount();
 
-    if (!smtpUser || !smtpPassword) {
-      console.error('SMTP credentials are not configured.');
+    if (!isMailConfigured() || !to) {
+      console.error('Email service is not configured.');
       throw new InternalServerErrorException(
         'Email service is not configured.',
       );
     }
 
-    // Sales inbox. Falls back to the SMTP account itself.
-    const to = process.env.ENQUIRY_TO || smtpUser;
-    const port = Number(process.env.SMTP_PORT || 465);
-
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port,
-      secure:
-        process.env.SMTP_SECURE !== undefined
-          ? process.env.SMTP_SECURE === 'true'
-          : port === 465,
-      auth: { user: smtpUser, pass: smtpPassword },
-    });
-
     const name = [dto.firstName, dto.lastName]
       .filter(Boolean)
       .join(' ')
       .trim();
+
+    const source = SOURCES[dto.source || 'app'];
 
     const header = [
       `Name: ${name}`,
@@ -49,15 +47,15 @@ export class EnquiriesService {
       `Phone: ${dto.phone || 'Not provided'}`,
       `Company: ${dto.company || 'Not provided'}`,
       `Account ID: ${dto.accountId || 'Guest'}`,
+      `Source: ${source}`,
       `Received: ${new Date().toISOString()}`,
     ].join('\n');
 
     try {
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM || smtpUser,
+      await sendMail({
         to,
         replyTo: dto.email,
-        subject: `${SUBJECTS[dto.type]}: ${name}`,
+        subject: `${SUBJECTS[dto.type]} (${source}): ${name}`,
         text: `${header}\n\n${dto.message}`,
       });
     } catch (error) {

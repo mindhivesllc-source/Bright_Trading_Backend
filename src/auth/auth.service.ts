@@ -694,7 +694,7 @@ import {
   randomInt,
 } from 'crypto';
 
-import * as nodemailer from 'nodemailer';
+import { isMailConfigured, sendMail } from '../common/utils/mail.util';
 
 import {
   hashPassword,
@@ -894,11 +894,8 @@ export class AuthService {
       return response;
     }
 
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPassword = process.env.SMTP_PASSWORD;
-
-    if (!smtpUser || !smtpPassword) {
-      console.error('SMTP credentials are not configured.');
+    if (!isMailConfigured()) {
+      console.error('Email service is not configured.');
 
       throw new InternalServerErrorException(
         'Email service is not configured.',
@@ -931,31 +928,7 @@ export class AuthService {
     }
 
     try {
-      const port = Number(
-        process.env.SMTP_PORT || 465,
-      );
-
-      const transporter =
-        nodemailer.createTransport({
-          host:
-            process.env.SMTP_HOST ||
-            'smtp.gmail.com',
-          port,
-          secure:
-            process.env.SMTP_SECURE !== undefined
-              ? process.env.SMTP_SECURE === 'true'
-              : port === 465,
-          auth: {
-            user: smtpUser,
-            pass: smtpPassword,
-          },
-        });
-
-      const safeFrom =
-        process.env.SMTP_FROM || smtpUser;
-
-      await transporter.sendMail({
-        from: safeFrom,
+      await sendMail({
         to: email,
         subject: 'Your Password Reset Verification Code',
         text:

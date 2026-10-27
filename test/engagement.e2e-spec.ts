@@ -54,13 +54,39 @@ let expoTicketFor: (message: { to: string }) => object = () => ({
   id: 'ticket',
 });
 
-// Stubs only the Expo endpoint; requests to the local app pass through.
+interface ResendCall {
+  headers: Record<string, string>;
+  body: {
+    from: string;
+    to: string[];
+    subject: string;
+    text: string;
+    reply_to?: string;
+  };
+}
+
+let resendCalls: ResendCall[] = [];
+let resendStatus = 200;
+
+// Stubs only the Expo and Resend endpoints; requests to the local app pass through.
 function installFetchStub(): void {
   globalThis.fetch = (async (
     input: string | URL | Request,
     init?: RequestInit,
   ) => {
     const url = String(input);
+
+    if (url === 'https://api.resend.com/emails') {
+      resendCalls.push({
+        headers: { ...(init?.headers as Record<string, string>) },
+        body: JSON.parse(String(init?.body ?? '{}')),
+      });
+
+      return new Response(JSON.stringify({ id: 'email-id' }), {
+        status: resendStatus,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!url.startsWith('https://exp.host/')) {
       return realFetch(input, init);
@@ -205,6 +231,8 @@ beforeEach(() => {
   // each test starts with fresh counters.
   app.get<ThrottlerStorageService>(ThrottlerStorage).storage.clear();
   expoCalls = [];
+  resendCalls = [];
+  resendStatus = 200;
   expoTicketFor = () => ({ status: 'ok', id: 'ticket' });
 });
 
@@ -985,5 +1013,89 @@ describe('rate limits', () => {
     }
 
     assert.ok(statuses.includes(429), statuses.join(','));
+  });
+});
+
+describe('email via Resend', () => {
+  const enquiry = {
+    type: 'contact',
+    source: 'website',
+    firstName: 'Asha',
+    lastName: 'Rao',
+    email: 'asha@example.com',
+    phone: '+91 98765 43210',
+    message: 'Looking for 1ct ovals.',
+  };
+
+  beforeEach(() => {
+    process.env.RESEND_API_KEY = 're_test_key';
+    process.env.MAIL_FROM = 'Bright Trading <no-reply@example.com>';
+    process.env.ENQUIRY_TO = 'sales@example.com';
+  });
+
+  after(() => {
+    delete process.env.RESEND_API_KEY;
+    delete process.env.MAIL_FROM;
+    delete process.env.ENQUIRY_TO;
+  });
+
+  it('sends website contact enquiries to the sales inbox', async () => {
+    const response = await api('POST', '/enquiries', { body: enquiry });
+
+    assert.equal(response.status, 202, JSON.stringify(response.body));
+    assert.equal(resendCalls.length, 1);
+    assert.equal(resendCalls[0].headers.Authorization, 'Bearer re_test_key');
+    assert.deepEqual(resendCalls[0].body.to, ['sales@example.com']);
+    assert.equal(resendCalls[0].body.from, 'Bright Trading <no-reply@example.com>');
+    assert.equal(resendCalls[0].body.reply_to, 'asha@example.com');
+    assert.equal(resendCalls[0].body.subject, 'Trade enquiry (website): Asha Rao');
+    assert.match(resendCalls[0].body.text, /Source: website/);
+    assert.match(resendCalls[0].body.text, /Looking for 1ct ovals\./);
+  });
+
+  it('keeps accepting app enquiries without a source', async () => {
+    const { source: _source, ...appEnquiry } = enquiry;
+    const response = await api('POST', '/enquiries', {
+      body: { ...appEnquiry, type: 'quote' },
+    });
+
+    assert.equal(response.status, 202, JSON.stringify(response.body));
+    assert.equal(resendCalls[0].body.subject, 'Quote request (mobile app): Asha Rao');
+  });
+
+  it('rejects unknown types and sources', async () => {
+    const badType = await api('POST', '/enquiries', {
+      body: { ...enquiry, type: 'spam' },
+    });
+    const badSource = await api('POST', '/enquiries', {
+      body: { ...enquiry, source: 'fax' },
+    });
+
+    assert.equal(badType.status, 400);
+    assert.equal(badSource.status, 400);
+    assert.equal(resendCalls.length, 0);
+  });
+
+  it('answers 500 when Resend fails', async () => {
+    resendStatus = 422;
+    const response = await api('POST', '/enquiries', { body: enquiry });
+
+    assert.equal(response.status, 500);
+    assert.equal(
+      response.body.message,
+      'Unable to send your request. Please try again later.',
+    );
+  });
+
+  it('sends the password reset code through Resend', async () => {
+    const { email } = await signup();
+    const response = await api('POST', '/auth/forgot-password', {
+      body: { email },
+    });
+
+    assert.ok(response.status < 300, JSON.stringify(response.body));
+    assert.equal(resendCalls.length, 1);
+    assert.deepEqual(resendCalls[0].body.to, [email]);
+    assert.match(resendCalls[0].body.text, /Your password reset code is \d{6}\./);
   });
 });
