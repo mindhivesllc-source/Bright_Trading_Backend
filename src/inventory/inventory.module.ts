@@ -15,6 +15,8 @@ import { InventoryController } from './inventory.controller';
 import { InventoryExportController, InventoryExportService } from './inventory-export.controller';
 import { InventorySearchService } from './inventory-search.service';
 import { InventorySyncService } from './inventory-sync.service';
+import { InventoryUploadController } from './inventory-upload.controller';
+import { InventoryUploadService } from './inventory-upload.service';
 import { KiraService } from './kira.service';
 
 import {
@@ -66,19 +68,21 @@ import {
     ),
   ],
 
- controllers: [
-  InventoryController,
-  InventoryExportController,
-],
+  controllers: [
+    InventoryController,
+    InventoryExportController,
+    InventoryUploadController,
+  ],
 
-providers: [
-  KiraService,
-  EasysoftService,
-  InventorySearchService,
-  InventorySyncService,
-  InventoryExportService,
-  JwtAuthGuard,
-],
+  providers: [
+    KiraService,
+    EasysoftService,
+    InventorySearchService,
+    InventorySyncService,
+    InventoryExportService,
+    InventoryUploadService,
+    JwtAuthGuard,
+  ],
 
   exports: [
     InventorySearchService,
