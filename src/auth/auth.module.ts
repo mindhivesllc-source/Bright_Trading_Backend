@@ -35,16 +35,32 @@
 
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { MongooseModule } from '@nestjs/mongoose';
 
+import { CartModule } from '../cart/cart.module';
 import { env } from '../config/env.config';
+import { DevicesModule } from '../devices/devices.module';
+import { SavedModule } from '../saved/saved.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RefreshTokensService } from './refresh-tokens.service';
+import {
+  RefreshToken,
+  RefreshTokenSchema,
+} from './schemas/refresh-token.schema';
 
 @Module({
   imports: [
     UsersModule,
+    // Needed to delete a user's data together with the account.
+    CartModule,
+    DevicesModule,
+    SavedModule,
+    MongooseModule.forFeature([
+      { name: RefreshToken.name, schema: RefreshTokenSchema },
+    ]),
     JwtModule.register({
       secret: env.jwtSecret,
       signOptions: {
@@ -59,6 +75,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard],
+  providers: [AuthService, RefreshTokensService, JwtAuthGuard],
 })
 export class AuthModule {}

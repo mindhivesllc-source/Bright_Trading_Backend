@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PostHogService } from '../posthog/posthog.service';
 import { SearchInventoryDto } from './dto/search-inventory.dto';
 import { InventorySearchService } from './inventory-search.service';
 import { InventorySyncService } from './inventory-sync.service';
@@ -23,6 +24,7 @@ export class InventoryController {
     private readonly searchService: InventorySearchService,
     private readonly syncService: InventorySyncService,
     private readonly kiraService: KiraService,
+    private readonly postHogService: PostHogService,
   ) {}
 
   /*
@@ -30,10 +32,16 @@ export class InventoryController {
    */
   @Post('search')
   @UseGuards(JwtAuthGuard)
-  searchInventory(
+  async searchInventory(
     @Body() dto: SearchInventoryDto,
   ) {
-    return this.searchService.search(dto);
+    const results = await this.searchService.search(dto);
+
+    this.postHogService.client?.capture({
+      event: 'inventory_searched',
+    });
+
+    return results;
   }
 
   /*
@@ -94,8 +102,14 @@ export class InventoryController {
   @Post('admin/sync/full')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.ACCEPTED)
-  startFullSync() {
-    return this.syncService.startFullSync();
+  async startFullSync() {
+    const sync = await this.syncService.startFullSync();
+
+    this.postHogService.client?.capture({
+      event: 'inventory_full_sync_started',
+    });
+
+    return sync;
   }
 
   /*
@@ -104,8 +118,14 @@ export class InventoryController {
   @Post('admin/sync/availability')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.ACCEPTED)
-  startAvailabilitySync() {
-    return this.syncService.startAvailabilitySync();
+  async startAvailabilitySync() {
+    const sync = await this.syncService.startAvailabilitySync();
+
+    this.postHogService.client?.capture({
+      event: 'inventory_availability_sync_started',
+    });
+
+    return sync;
   }
 
   /*

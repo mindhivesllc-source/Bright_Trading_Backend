@@ -47,6 +47,12 @@ import {
   KIRA_DB_CONNECTION,
 } from '../database/database.constants';
 
+import {
+  logInventorySyncCompleted,
+  logInventorySyncFailed,
+  logInventorySyncStarted,
+} from '../posthog/posthog-logger';
+
 type SyncDiamond = {
   stoneNo: string;
   reportNo?: string;
@@ -216,6 +222,8 @@ export class InventorySyncService {
 
     const runId = randomUUID();
 
+    logInventorySyncStarted();
+
     try {
       /* ==================================================
          1. KIRA FULL INVENTORY
@@ -258,6 +266,10 @@ export class InventorySyncService {
 
       this.logger.log(
         `Full inventory synchronization completed: ${this.processedRecords} total diamonds (${this.kiraProcessedRecords} Kira, ${this.easysoftProcessedRecords} Easysoft)`,
+      );
+
+      logInventorySyncCompleted(
+        this.processedRecords,
       );
 
       /* ==================================================
@@ -305,6 +317,8 @@ export class InventorySyncService {
         error instanceof Error
           ? error.message
           : String(error);
+
+      logInventorySyncFailed();
 
       throw error;
     } finally {

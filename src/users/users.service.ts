@@ -294,6 +294,35 @@ export class UsersService {
       .exec();
   }
 
+  async existsById(
+    userId: string,
+  ): Promise<boolean> {
+    if (!Types.ObjectId.isValid(userId)) {
+      return false;
+    }
+
+    const found = await this.userModel
+      .exists({ _id: userId })
+      .exec();
+
+    return found !== null;
+  }
+
+  // Returns true when a user document was removed.
+  async deleteById(
+    userId: string,
+  ): Promise<boolean> {
+    if (!Types.ObjectId.isValid(userId)) {
+      return false;
+    }
+
+    const result = await this.userModel
+      .deleteOne({ _id: userId })
+      .exec();
+
+    return result.deletedCount > 0;
+  }
+
   // Retained for compatibility with existing services.
   // Never call this from a public password-reset endpoint.
   async updatePasswordByEmail(
@@ -440,13 +469,14 @@ export class UsersService {
   }
 
   // The reset token is consumed in the same database
-  // operation as the password change.
+  // operation as the password change. Returns the user's id
+  // when the password was changed, otherwise null.
   async updatePasswordWithResetToken(
     resetTokenHash: string,
     passwordHash: string,
-  ): Promise<boolean> {
-    const result = await this.userModel
-      .updateOne(
+  ): Promise<string | null> {
+    const updated = await this.userModel
+      .findOneAndUpdate(
         {
           resetTokenHash,
           resetTokenExpiresAt: {
@@ -465,9 +495,10 @@ export class UsersService {
             resetOtpExpiresAt: '',
           },
         },
+        { projection: { _id: 1 } },
       )
       .exec();
 
-    return result.modifiedCount > 0;
+    return updated ? updated._id.toString() : null;
   }
 }

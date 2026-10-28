@@ -683,6 +683,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 
@@ -693,7 +694,7 @@ import {
   randomInt,
 } from 'crypto';
 
-import * as nodemailer from 'nodemailer';
+import { isMailConfigured, sendMail } from '../common/utils/mail.util';
 
 import {
   hashPassword,
@@ -703,13 +704,24 @@ import {
 import { env } from '../config/env.config';
 
 import {
+  PostHogService,
+} from '../posthog/posthog.service';
+
+import {
   UserDocument,
 } from '../users/schemas/user.schema';
 
+import { CartService } from '../cart/cart.service';
+import { DevicesService } from '../devices/devices.service';
+import { SavedService } from '../saved/saved.service';
 import { UsersService } from '../users/users.service';
 
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
+import {
+  RefreshClientInfo,
+  RefreshTokensService,
+} from './refresh-tokens.service';
 
 import {
   JwtPayload,
@@ -743,10 +755,18 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly cartService: CartService,
+    private readonly devicesService: DevicesService,
+    private readonly savedService: SavedService,
+    private readonly postHogService: PostHogService,
+    private readonly refreshTokensService: RefreshTokensService,
   ) {}
 
   // Existing signup functionality
-  async signup(signupDto: SignupDto) {
+  async signup(
+    signupDto: SignupDto,
+    client: RefreshClientInfo = {},
+  ) {
     const email = signupDto.email
       .trim()
       .toLowerCase();
@@ -784,7 +804,14 @@ export class AuthService {
         zipCode: signupDto.zipCode?.trim() || '',
       });
 
-      return this.createAuthResponse(user);
+      const response = await this.createAuthResponse(user, client);
+
+      this.postHogService.client?.capture({
+        distinctId: user._id.toString(),
+        event: 'account_created',
+      });
+
+      return response;
     } catch (error) {
       if (this.isMongoDuplicateKeyError(error)) {
         throw new ConflictException(
@@ -801,7 +828,10 @@ export class AuthService {
   }
 
   // Existing login functionality
-  async login(dto: LoginDto) {
+  async login(
+    dto: LoginDto,
+    client: RefreshClientInfo = {},
+  ) {
     const email = dto.email
       .trim()
       .toLowerCase();
@@ -828,7 +858,14 @@ export class AuthService {
       );
     }
 
-    return this.createAuthResponse(user);
+    const response = await this.createAuthResponse(user, client);
+
+    this.postHogService.client?.capture({
+      distinctId: user._id.toString(),
+      event: 'user_logged_in',
+    });
+
+    return response;
   }
 
   // STEP 1: Generate and email OTP
@@ -857,11 +894,8 @@ export class AuthService {
       return response;
     }
 
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPassword = process.env.SMTP_PASSWORD;
-
-    if (!smtpUser || !smtpPassword) {
-      console.error('SMTP credentials are not configured.');
+    if (!isMailConfigured()) {
+      console.error('Email service is not configured.');
 
       throw new InternalServerErrorException(
         'Email service is not configured.',
@@ -894,31 +928,7 @@ export class AuthService {
     }
 
     try {
-      const port = Number(
-        process.env.SMTP_PORT || 465,
-      );
-
-      const transporter =
-        nodemailer.createTransport({
-          host:
-            process.env.SMTP_HOST ||
-            'smtp.gmail.com',
-          port,
-          secure:
-            process.env.SMTP_SECURE !== undefined
-              ? process.env.SMTP_SECURE === 'true'
-              : port === 465,
-          auth: {
-            user: smtpUser,
-            pass: smtpPassword,
-          },
-        });
-
-      const safeFrom =
-        process.env.SMTP_FROM || smtpUser;
-
-      await transporter.sendMail({
-        from: safeFrom,
+      await sendMail({
         to: email,
         subject: 'Your Password Reset Verification Code',
         text:
@@ -1044,17 +1054,20 @@ export class AuthService {
       resetToken,
     );
 
-    const updated = await this.usersService
+    const userId = await this.usersService
       .updatePasswordWithResetToken(
         resetTokenHash,
         passwordHash,
       );
 
-    if (!updated) {
+    if (!userId) {
       throw new BadRequestException(
         'Reset session expired or already used. Please request a new OTP.',
       );
     }
+
+    // A new password ends every existing app session.
+    await this.refreshTokensService.revokeAllForUser(userId);
 
     return {
       message:
@@ -1081,7 +1094,101 @@ export class AuthService {
     };
   }
 
+  // Permanently deletes the account and all data stored for it.
+  // Dependent data goes first so a failed request can be retried:
+  // the user document is only removed once everything else is gone.
+  async deleteAccount(userId: string): Promise<void> {
+    if (!(await this.usersService.existsById(userId))) {
+      throw new NotFoundException('User not found.');
+    }
+
+    await Promise.all([
+      this.cartService.deleteAllForUser(userId),
+      this.devicesService.deleteAllForUser(userId),
+      this.savedService.deleteAllForUser(userId),
+      this.refreshTokensService.deleteAllForUser(userId),
+    ]);
+
+    if (!(await this.usersService.deleteById(userId))) {
+      throw new NotFoundException('User not found.');
+    }
+
+    this.postHogService.client?.capture({
+      event: 'account_deleted',
+    });
+  }
+
   // Hash sensitive reset values before MongoDB storage.
+  // Exchanges a refresh token for a new access token and a rotated
+  // refresh token.
+  async refresh(
+    refreshToken: string,
+    client: RefreshClientInfo = {},
+  ) {
+    const result = await this.refreshTokensService.rotate(
+      refreshToken,
+      client,
+    );
+
+    if (result.status === 'in_progress') {
+      throw new ConflictException('Refresh already in progress.');
+    }
+
+    if (result.status === 'reused') {
+      this.postHogService.client?.capture({
+        distinctId: result.userId,
+        event: 'refresh_reuse_detected',
+      });
+    }
+
+    if (result.status !== 'rotated') {
+      throw new UnauthorizedException(
+        'Session expired. Please log in again.',
+      );
+    }
+
+    const user = await this.usersService.findById(result.userId);
+
+    if (!user) {
+      await this.refreshTokensService.deleteAllForUser(result.userId);
+
+      throw new UnauthorizedException('User no longer exists.');
+    }
+
+    const accessToken = await this.signAccessToken(user);
+
+    this.postHogService.client?.capture({
+      distinctId: result.userId,
+      event: 'session_refreshed',
+    });
+
+    return {
+      accessToken,
+      tokenType: 'Bearer',
+      refreshToken: result.issued.refreshToken,
+      refreshTokenExpiresAt: result.issued.refreshTokenExpiresAt,
+      user: this.toPublicUser(user),
+    };
+  }
+
+  // Ends the session the refresh token belongs to. Never fails, so the
+  // client can call it fire-and-forget.
+  async logout(refreshToken: unknown): Promise<void> {
+    if (
+      typeof refreshToken !== 'string' ||
+      !refreshToken ||
+      refreshToken.length > 200
+    ) {
+      return;
+    }
+
+    try {
+      await this.refreshTokensService.revokeFamilyOf(refreshToken);
+    } catch (error) {
+      console.error('Unable to revoke refresh token:', error);
+    }
+  }
+
   private hashResetValue(
     purpose: 'otp' | 'token',
     value: string,
@@ -1101,16 +1208,30 @@ export class AuthService {
     );
   }
 
-  private async createAuthResponse(
+  private signAccessToken(
     user: UserDocument,
-  ) {
+  ): Promise<string> {
     const payload: JwtPayload = {
       sub: user._id.toString(),
       email: user.email,
     };
 
-    const accessToken = await this.jwtService
-      .signAsync(payload);
+    return this.jwtService.signAsync(payload);
+  }
+
+  private async createAuthResponse(
+    user: UserDocument,
+    client: RefreshClientInfo,
+  ) {
+    const userId = user._id.toString();
+    const accessToken = await this.signAccessToken(user);
+    const { refreshToken, refreshTokenExpiresAt } =
+      await this.refreshTokensService.issue(userId, client);
+
+    // Account id only: no email or name leaves the server for analytics.
+    this.postHogService.client?.identify({
+      distinctId: userId,
+    });
 
     return {
       message: 'Authentication successful.',
@@ -1118,6 +1239,9 @@ export class AuthService {
       accessToken,
       tokenType: 'Bearer',
       expiresIn: env.jwtExpiresIn,
+      // Ignored by the website; used by the mobile app to stay signed in.
+      refreshToken,
+      refreshTokenExpiresAt,
     };
   }
 
